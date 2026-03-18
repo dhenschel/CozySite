@@ -12,12 +12,35 @@ const defaults = {
 };
 
 const state = { ...defaults };
+const BASE_DUCK_ASSET = {
+  src: "images/duck_glow.png",
+  sourceWidth: 1024,
+  sourceHeight: 1024,
+};
+const SPECIAL_DUCK_CHANCE = 1 / 100;
+const SPECIAL_DUCK_ASSETS = [
+  "architect_duck.png",
+  "bread_duck.png",
+  "glasses_duck.png",
+  "hoodie_duck.png",
+  "painting_duck.png",
+  "real_duck.png",
+  "shaker_duck.png",
+  "sign_duck.png",
+  "spezi_duck.png",
+].map((filename) => ({
+  src: `images/ducks/${filename}`,
+  sourceWidth: 1024,
+  sourceHeight: 1024,
+}));
 
 const root = document.documentElement;
 const duckRain = document.getElementById("duckRain");
+const duckDragLayer = document.getElementById("duckDragLayer");
 const form = document.getElementById("duckControls");
 const infoTrigger = document.getElementById("infoTrigger");
 const infoPopup = document.getElementById("infoPopup");
+const nightModeToggle = document.getElementById("nightModeToggle");
 const panelStack = document.querySelector(".panel-stack");
 const glassCard = document.getElementById("glassCard");
 const panelToggle = document.getElementById("panelToggle");
@@ -83,6 +106,38 @@ function randomSignedMagnitude(base, variance, min, max) {
   return magnitude * (Math.random() < 0.5 ? -1 : 1);
 }
 
+function pickDuckAsset() {
+  if (!SPECIAL_DUCK_ASSETS.length || Math.random() >= SPECIAL_DUCK_CHANCE) {
+    return BASE_DUCK_ASSET;
+  }
+
+  const index = Math.floor(Math.random() * SPECIAL_DUCK_ASSETS.length);
+  return SPECIAL_DUCK_ASSETS[index];
+}
+
+function getRenderedDuckSize(baseSize, asset) {
+  const baseMaxDimension = Math.max(BASE_DUCK_ASSET.sourceWidth, BASE_DUCK_ASSET.sourceHeight);
+  const assetMaxDimension = Math.max(asset.sourceWidth, asset.sourceHeight);
+  const resolutionScale = baseMaxDimension / assetMaxDimension;
+
+  return clamp(baseSize * resolutionScale, 18, 520);
+}
+
+function createDuckMotionProfile() {
+  const asset = pickDuckAsset();
+  const logicalSize = randomAround(state.size, state.sizeVariance, 24, 520);
+  const size = getRenderedDuckSize(logicalSize, asset);
+  const duration = randomAround(state.speed, state.speedVariance, 1, 70);
+  const driftBase = randomAround(state.drift, state.driftVariance, 0, 420);
+
+  return {
+    asset,
+    size,
+    duration,
+    driftBase,
+  };
+}
+
 function syncControl(key) {
   const value = state[key];
   controls[key].range.value = String(value);
@@ -119,6 +174,11 @@ function setInfoPopupOpen(isOpen) {
   infoTrigger.setAttribute("aria-expanded", String(isOpen));
 }
 
+function setNightMode(isEnabled) {
+  root.classList.toggle("night-mode", isEnabled);
+  nightModeToggle.checked = isEnabled;
+}
+
 function setDuckPath(duck, leftPx, topPx, fallDistance, duration, delay = 0) {
   duck.style.setProperty("--start-left", `${leftPx.toFixed(2)}px`);
   duck.style.setProperty("--start-top", `${topPx.toFixed(2)}px`);
@@ -128,6 +188,70 @@ function setDuckPath(duck, leftPx, topPx, fallDistance, duration, delay = 0) {
   duck.style.setProperty("--fall-end", `${fallDistance.toFixed(2)}px`);
   duck.dataset.fallDistance = fallDistance.toFixed(2);
   duck.dataset.duration = duration.toFixed(2);
+}
+
+function restartDuckAnimation(duck) {
+  duck.style.animation = "none";
+  void duck.offsetWidth;
+  duck.style.animation = "";
+}
+
+function applyDuckMotionProfile(duck, profile) {
+  const { asset, size, duration, driftBase } = profile;
+
+  duck.src = asset.src;
+  duck.style.setProperty("--size", size.toFixed(2));
+  duck.style.setProperty("--scale-start", randomAround(0.94, 0.12, 0.72, 1.28).toFixed(2));
+  duck.style.setProperty("--scale-mid", randomAround(1.04, 0.16, 0.78, 1.36).toFixed(2));
+  duck.style.setProperty("--scale-end", randomAround(0.98, 0.12, 0.72, 1.3).toFixed(2));
+  duck.style.setProperty(
+    "--drift-start",
+    `${randomSignedMagnitude(driftBase, state.driftVariance, 0, 420).toFixed(1)}px`
+  );
+  duck.style.setProperty(
+    "--drift-mid",
+    `${randomSignedMagnitude(driftBase * 1.2, state.driftVariance, 0, 520).toFixed(1)}px`
+  );
+  duck.style.setProperty(
+    "--drift-end",
+    `${randomSignedMagnitude(driftBase * 0.85, state.driftVariance, 0, 520).toFixed(1)}px`
+  );
+  duck.style.setProperty(
+    "--rotate-start",
+    `${randomSignedMagnitude(state.rotation, state.rotationVariance, 0, 540).toFixed(1)}deg`
+  );
+  duck.style.setProperty(
+    "--rotate-mid",
+    `${randomSignedMagnitude(
+      state.rotation * 1.25,
+      state.rotationVariance,
+      0,
+      640
+    ).toFixed(1)}deg`
+  );
+  duck.style.setProperty(
+    "--rotate-end",
+    `${randomSignedMagnitude(
+      state.rotation * 1.65,
+      state.rotationVariance,
+      0,
+      720
+    ).toFixed(1)}deg`
+  );
+
+  return { size, duration };
+}
+
+function configureFreshDuckSpawn(duck, useEntryDelay = false) {
+  const profile = createDuckMotionProfile();
+  const { size, duration } = applyDuckMotionProfile(duck, profile);
+  const fallDistance = window.innerHeight + size * 2.8;
+  const minVisiblePart = size * 0.28;
+  const startLeft = randomBetween(-size + minVisiblePart, window.innerWidth - minVisiblePart);
+  const startTop = size * -1.45;
+  const entryDelay = useEntryDelay ? randomBetween(0, duration) : 0;
+
+  setDuckPath(duck, startLeft, startTop, fallDistance, duration, entryDelay);
 }
 
 function getFrozenDuckTransform(duck) {
@@ -169,14 +293,13 @@ function releaseDuck(pointerId) {
   );
 
   setDuckPath(duck, lastX, lastY, remainingDistance, nextDuration);
-
-  duck.style.animation = "none";
-  void duck.offsetWidth;
   duck.classList.remove("is-dragged");
+  duckRain.appendChild(duck);
+  duck.style.zIndex = "";
   duck.style.left = "";
   duck.style.top = "";
   duck.style.transform = "";
-  duck.style.animation = "";
+  restartDuckAnimation(duck);
   duck.releasePointerCapture(pointerId);
 
   activeDuckDrag = null;
@@ -185,6 +308,15 @@ function releaseDuck(pointerId) {
 function attachDuckDragging(duck) {
   duck.addEventListener("dragstart", (event) => {
     event.preventDefault();
+  });
+
+  duck.addEventListener("animationend", () => {
+    if (duck.classList.contains("is-dragged")) {
+      return;
+    }
+
+    configureFreshDuckSpawn(duck);
+    restartDuckAnimation(duck);
   });
 
   duck.addEventListener("pointerdown", (event) => {
@@ -201,16 +333,16 @@ function attachDuckDragging(duck) {
       pointerId: event.pointerId,
       offsetX: event.clientX - rect.left,
       offsetY: event.clientY - rect.top,
-      startX: rect.left,
-      startY: rect.top,
       lastX: rect.left,
       lastY: rect.top,
       size: rect.width,
       frozenTransform: getFrozenDuckTransform(duck),
     };
 
+    duckDragLayer.appendChild(duck);
     duck.style.left = `${rect.left.toFixed(2)}px`;
     duck.style.top = `${rect.top.toFixed(2)}px`;
+    duck.style.zIndex = "1";
     duck.style.transform = activeDuckDrag.frozenTransform;
     duck.classList.add("is-dragged");
     duck.setPointerCapture(event.pointerId);
@@ -240,64 +372,18 @@ function attachDuckDragging(duck) {
   });
 }
 
-function createDuck(index, total) {
+function createDuck() {
   const duck = document.createElement("img");
-  const size = randomAround(state.size, state.sizeVariance, 24, 520);
-  const duration = randomAround(state.speed, state.speedVariance, 1, 70);
-  const driftBase = randomAround(state.drift, state.driftVariance, 0, 420);
 
   duck.className = "duck";
-  duck.src = "images/duck_glow.png";
+  duck.src = BASE_DUCK_ASSET.src;
   duck.alt = "";
   duck.decoding = "async";
   duck.draggable = false;
 
-  const fallDistance = window.innerHeight + size * 2.8;
-  const minVisiblePart = size * 0.28;
-  const startLeft = randomBetween(-size + minVisiblePart, window.innerWidth - minVisiblePart);
-  const startTop = size * -1.45;
-
-  duck.style.setProperty("--size", size.toFixed(2));
-  setDuckPath(duck, startLeft, startTop, fallDistance, duration, -Math.random() * duration);
-  duck.style.setProperty("--scale-start", randomAround(0.94, 0.12, 0.72, 1.28).toFixed(2));
-  duck.style.setProperty("--scale-mid", randomAround(1.04, 0.16, 0.78, 1.36).toFixed(2));
-  duck.style.setProperty("--scale-end", randomAround(0.98, 0.12, 0.72, 1.3).toFixed(2));
-  duck.style.setProperty(
-    "--drift-start",
-    `${randomSignedMagnitude(driftBase, state.driftVariance, 0, 420).toFixed(1)}px`
-  );
-  duck.style.setProperty(
-    "--drift-mid",
-    `${randomSignedMagnitude(driftBase * 1.2, state.driftVariance, 0, 520).toFixed(1)}px`
-  );
-  duck.style.setProperty(
-    "--drift-end",
-    `${randomSignedMagnitude(driftBase * 0.85, state.driftVariance, 0, 520).toFixed(1)}px`
-  );
-  duck.style.setProperty(
-    "--rotate-start",
-    `${randomSignedMagnitude(state.rotation, state.rotationVariance, 0, 540).toFixed(1)}deg`
-  );
-  duck.style.setProperty(
-    "--rotate-mid",
-    `${randomSignedMagnitude(
-      state.rotation * 1.25,
-      state.rotationVariance,
-      0,
-      640
-    ).toFixed(1)}deg`
-  );
-  duck.style.setProperty(
-    "--rotate-end",
-    `${randomSignedMagnitude(
-      state.rotation * 1.65,
-      state.rotationVariance,
-      0,
-      720
-    ).toFixed(1)}deg`
-  );
-
   attachDuckDragging(duck);
+  configureFreshDuckSpawn(duck, true);
+  restartDuckAnimation(duck);
 
   return duck;
 }
@@ -310,7 +396,7 @@ function renderDucks() {
   const fragment = document.createDocumentFragment();
 
   for (let index = 0; index < activeCount; index += 1) {
-    fragment.appendChild(createDuck(index, activeCount));
+    fragment.appendChild(createDuck());
   }
 
   duckRain.replaceChildren(fragment);
@@ -374,6 +460,10 @@ infoTrigger.addEventListener("click", () => {
   setInfoPopupOpen(infoPopup.hidden);
 });
 
+nightModeToggle.addEventListener("change", () => {
+  setNightMode(nightModeToggle.checked);
+});
+
 document.addEventListener("pointerdown", (event) => {
   if (
     infoPopup.hidden ||
@@ -391,6 +481,7 @@ glassCard.addEventListener("transitionend", () => {
 });
 
 setInfoPopupOpen(false);
+setNightMode(false);
 setPanelExpanded(true);
 resetToDefaults();
 syncPanelHeight();

@@ -8,6 +8,13 @@
     <script src="script.js" defer></script>
   </head>
   <body>
+    <label class="theme-switch" for="nightModeToggle">
+      <span class="theme-switch-label">Nachtmodus</span>
+      <span class="theme-switch-control">
+        <input id="nightModeToggle" type="checkbox" />
+        <span class="theme-switch-slider" aria-hidden="true"></span>
+      </span>
+    </label>
     <button
       class="info-trigger"
       id="infoTrigger"
@@ -22,6 +29,7 @@
       <p>Inspiriert von einer sehr wichtigen Leuchte-Ente. Der Rest ist eskaliert.</p>
     </div>
     <div class="duck-rain" id="duckRain" aria-hidden="true"></div>
+    <div class="duck-drag-layer" id="duckDragLayer" aria-hidden="true"></div>
     <main class="page-shell">
       <div class="panel-stack">
         <section class="glass-card" id="glassCard">
@@ -207,7 +215,9 @@
             </div>
           </form>
 
-          <p class="collapse-hint">Der Pfeil rechts kann die Einstellungen verstecken.</p>
+          <p class="collapse-hint">
+            Der Pfeil rechts kann die Einstellungen verstecken. Enten lassen sich auch festhalten.
+          </p>
         </section>
 
         <button
