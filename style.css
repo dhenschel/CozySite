@@ -5,6 +5,10 @@
   --glass-border: rgba(255, 255, 255, 0.45);
   --text: rgb(34, 53, 74);
   --shadow: rgba(71, 122, 156, 0.18);
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
 }
 
 * {
@@ -16,6 +20,8 @@ body {
   width: 100%;
   min-height: 100%;
   overflow-x: hidden;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 body {
@@ -23,8 +29,10 @@ body {
   isolation: isolate;
   margin: 0;
   min-height: 100vh;
+  min-height: 100dvh;
   overflow-y: auto;
   overscroll-behavior-y: none;
+  -webkit-overflow-scrolling: touch;
   font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
   color: var(--text);
   background: none;
@@ -49,8 +57,8 @@ body::before {
 
 .info-trigger {
   position: fixed;
-  top: 64px;
-  right: 16px;
+  top: calc(var(--safe-top) + 64px);
+  right: calc(var(--safe-right) + 16px);
   z-index: 3;
   width: 40px;
   height: 40px;
@@ -64,8 +72,8 @@ body::before {
 
 .theme-switch {
   position: fixed;
-  top: 16px;
-  right: 16px;
+  top: calc(var(--safe-top) + 16px);
+  right: calc(var(--safe-right) + 16px);
   z-index: 3;
   display: inline-flex;
   align-items: center;
@@ -130,8 +138,8 @@ body::before {
 
 .info-popup {
   position: fixed;
-  top: 112px;
-  right: 16px;
+  top: calc(var(--safe-top) + 112px);
+  right: calc(var(--safe-right) + 16px);
   z-index: 3;
   width: min(320px, calc(100vw - 32px));
   padding: 14px 16px;
@@ -152,6 +160,7 @@ body::before {
   z-index: 0;
   pointer-events: auto;
   overflow: hidden;
+  contain: layout paint;
   transform: translateZ(0);
   will-change: transform;
 }
@@ -162,6 +171,7 @@ body::before {
   z-index: 2;
   pointer-events: none;
   overflow: hidden;
+  contain: layout paint;
 }
 
 .duck {
@@ -181,10 +191,12 @@ body::before {
   touch-action: none;
   user-select: none;
   -webkit-user-drag: none;
+  -webkit-touch-callout: none;
   cursor: grab;
   will-change: transform;
   backface-visibility: hidden;
   transform-origin: center;
+  transform: translateZ(0);
 }
 
 .duck.is-dragged {
@@ -203,7 +215,11 @@ body::before {
   display: grid;
   justify-items: center;
   align-content: start;
-  padding: 32px 24px;
+  padding:
+    calc(var(--safe-top) + 32px)
+    calc(var(--safe-right) + 24px)
+    calc(var(--safe-bottom) + 32px)
+    calc(var(--safe-left) + 24px);
   pointer-events: none;
   overflow: visible;
 }
@@ -234,6 +250,16 @@ body::before {
     filter 220ms ease;
   pointer-events: auto;
   overflow: visible;
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass-card {
+    background: rgba(255, 255, 255, 0.88);
+  }
+
+  .control-group {
+    background: rgba(255, 255, 255, 0.62);
+  }
 }
 
 .card-copy {
@@ -303,12 +329,14 @@ body::before {
 
 .value-input {
   width: 96px;
+  min-height: 40px;
   padding: 8px 10px;
   border: 1px solid rgba(255, 255, 255, 0.45);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.55);
   color: var(--text);
   font: inherit;
+  font-size: 16px;
   text-align: right;
 }
 
@@ -459,30 +487,48 @@ body::before {
   }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .panel-toggle-icon {
+    animation: none;
+  }
+
+  .glass-card,
+  .panel-toggle,
+  .theme-switch-slider,
+  .theme-switch-slider::after {
+    transition-duration: 0.01ms;
+  }
+}
+
 @media (max-width: 640px) {
   .info-trigger {
-    top: 56px;
-    right: 12px;
+    top: calc(var(--safe-top) + 56px);
+    right: calc(var(--safe-right) + 12px);
     width: 36px;
     height: 36px;
   }
 
   .info-popup {
-    top: 104px;
-    right: 12px;
-    width: min(300px, calc(100vw - 24px));
+    top: calc(var(--safe-top) + 104px);
+    right: calc(var(--safe-right) + 12px);
+    width: min(300px, calc(100vw - var(--safe-left) - var(--safe-right) - 24px));
   }
 
   .theme-switch {
-    top: 12px;
-    right: 12px;
+    top: calc(var(--safe-top) + 12px);
+    right: calc(var(--safe-right) + 12px);
     gap: 8px;
     padding: 7px 10px;
     font-size: 0.84rem;
+    max-width: min(220px, calc(100vw - var(--safe-left) - var(--safe-right) - 24px));
   }
 
   .page-shell {
-    padding: 18px;
+    padding:
+      calc(var(--safe-top) + 112px)
+      calc(var(--safe-right) + 18px)
+      calc(var(--safe-bottom) + 22px)
+      calc(var(--safe-left) + 18px);
   }
 
   .panel-stack {
@@ -522,7 +568,43 @@ body::before {
     position: fixed;
     top: 50vh;
     left: auto;
-    right: 10px;
+    right: calc(var(--safe-right) + 10px);
     transform: translateY(-50%);
+  }
+}
+
+@media (max-width: 420px) {
+  .theme-switch {
+    gap: 6px;
+    padding: 6px 9px;
+  }
+
+  .theme-switch-label {
+    font-size: 0.79rem;
+  }
+
+  .glass-card {
+    padding: 20px;
+    border-radius: 24px;
+  }
+
+  .control-group {
+    padding: 15px;
+    border-radius: 18px;
+  }
+
+  .control-heading {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .value-input {
+    width: 100%;
+    text-align: left;
+  }
+
+  .panel-stack {
+    padding-right: 38px;
   }
 }

@@ -12,12 +12,11 @@ const defaults = {
 };
 
 const state = { ...defaults };
-const BASE_DUCK_ASSET = {
-  src: "images/duck_glow.png",
-  sourceWidth: 1024,
-  sourceHeight: 1024,
-};
-const SPECIAL_DUCK_CHANCE = 1 / 100;
+const APP_VERSION =
+  document.querySelector('meta[name="app-version"]')?.content || "dev";
+const FALLBACK_ASSET_SIZE = 1024;
+const BASE_DUCK_ASSET = createDuckAsset("images/duck_glow.png");
+const SPECIAL_DUCK_CHANCE = 1 / 10000;
 const SPECIAL_DUCK_ASSETS = [
   "architect_duck.png",
   "bread_duck.png",
@@ -28,11 +27,7 @@ const SPECIAL_DUCK_ASSETS = [
   "shaker_duck.png",
   "sign_duck.png",
   "spezi_duck.png",
-].map((filename) => ({
-  src: `images/ducks/${filename}`,
-  sourceWidth: 1024,
-  sourceHeight: 1024,
-}));
+].map((filename) => createDuckAsset(`images/ducks/${filename}`));
 
 const root = document.documentElement;
 const duckRain = document.getElementById("duckRain");
@@ -47,6 +42,8 @@ const panelToggle = document.getElementById("panelToggle");
 const panelToggleIcon = document.getElementById("panelToggleIcon");
 const controlElements = Array.from(document.querySelectorAll("[data-setting]"));
 let activeDuckDrag = null;
+let renderFrame = 0;
+let panelHeightFrame = 0;
 
 const controls = controlElements.reduce((map, element) => {
   const key = element.dataset.setting;
@@ -64,6 +61,67 @@ const controls = controlElements.reduce((map, element) => {
 
   return nextMap;
 }, {});
+
+function versionedUrl(path) {
+  const separator = path.includes("?") ? "&" : "?";
+  return `${path}${separator}v=${encodeURIComponent(APP_VERSION)}`;
+}
+
+function createDuckAsset(path) {
+  return {
+    path,
+    url: versionedUrl(path),
+    sourceWidth: FALLBACK_ASSET_SIZE,
+    sourceHeight: FALLBACK_ASSET_SIZE,
+    dimensionsReady: false,
+    loadPromise: null,
+  };
+}
+
+function loadDuckAssetDimensions(asset) {
+  if (asset.dimensionsReady) {
+    return Promise.resolve(asset);
+  }
+
+  if (asset.loadPromise) {
+    return asset.loadPromise;
+  }
+
+  asset.loadPromise = new Promise((resolve) => {
+    const probe = new Image();
+
+    probe.decoding = "async";
+    probe.onload = () => {
+      asset.sourceWidth = probe.naturalWidth || FALLBACK_ASSET_SIZE;
+      asset.sourceHeight = probe.naturalHeight || FALLBACK_ASSET_SIZE;
+      asset.dimensionsReady = true;
+      resolve(asset);
+    };
+    probe.onerror = () => {
+      asset.dimensionsReady = true;
+      resolve(asset);
+    };
+    probe.src = asset.url;
+  });
+
+  return asset.loadPromise;
+}
+
+function warmDuckAssets() {
+  const loadAllAssetMetadata = () => {
+    Promise.allSettled([BASE_DUCK_ASSET, ...SPECIAL_DUCK_ASSETS].map(loadDuckAssetDimensions))
+      .then(() => {
+        requestRender();
+      });
+  };
+
+  if ("requestIdleCallback" in window) {
+    window.requestIdleCallback(loadAllAssetMetadata, { timeout: 1500 });
+    return;
+  }
+
+  window.setTimeout(loadAllAssetMetadata, 0);
+}
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
@@ -108,11 +166,15 @@ function randomSignedMagnitude(base, variance, min, max) {
 
 function pickDuckAsset() {
   if (!SPECIAL_DUCK_ASSETS.length || Math.random() >= SPECIAL_DUCK_CHANCE) {
+    loadDuckAssetDimensions(BASE_DUCK_ASSET);
     return BASE_DUCK_ASSET;
   }
 
   const index = Math.floor(Math.random() * SPECIAL_DUCK_ASSETS.length);
-  return SPECIAL_DUCK_ASSETS[index];
+  const asset = SPECIAL_DUCK_ASSETS[index];
+
+  loadDuckAssetDimensions(asset);
+  return asset;
 }
 
 function getRenderedDuckSize(baseSize, asset) {
@@ -149,15 +211,29 @@ function syncAllControls() {
 }
 
 function syncPanelHeight() {
-  if (!glassCard.hidden) {
-    panelStack.style.minHeight = `${glassCard.offsetHeight}px`;
+  if (glassCard.hidden) {
+    panelStack.style.minHeight = "";
+    return;
   }
+
+  panelStack.style.minHeight = `${glassCard.offsetHeight}px`;
+}
+
+function requestPanelHeightSync() {
+  if (panelHeightFrame) {
+    return;
+  }
+
+  panelHeightFrame = window.requestAnimationFrame(() => {
+    panelHeightFrame = 0;
+    syncPanelHeight();
+  });
 }
 
 function setPanelExpanded(isExpanded) {
   if (isExpanded) {
     glassCard.hidden = false;
-    syncPanelHeight();
+    requestPanelHeightSync();
   }
 
   root.classList.toggle("panel-collapsed", !isExpanded);
@@ -177,6 +253,17 @@ function setInfoPopupOpen(isOpen) {
 function setNightMode(isEnabled) {
   root.classList.toggle("night-mode", isEnabled);
   nightModeToggle.checked = isEnabled;
+}
+
+function requestRender() {
+  if (renderFrame) {
+    return;
+  }
+
+  renderFrame = window.requestAnimationFrame(() => {
+    renderFrame = 0;
+    renderDucks();
+  });
 }
 
 function setDuckPath(duck, leftPx, topPx, fallDistance, duration, delay = 0) {
@@ -199,7 +286,7 @@ function restartDuckAnimation(duck) {
 function applyDuckMotionProfile(duck, profile) {
   const { asset, size, duration, driftBase } = profile;
 
-  duck.src = asset.src;
+  duck.src = asset.url;
   duck.style.setProperty("--size", size.toFixed(2));
   duck.style.setProperty("--scale-start", randomAround(0.94, 0.12, 0.72, 1.28).toFixed(2));
   duck.style.setProperty("--scale-mid", randomAround(1.04, 0.16, 0.78, 1.36).toFixed(2));
@@ -262,7 +349,13 @@ function getFrozenDuckTransform(duck) {
   }
 
   try {
-    const Matrix = window.DOMMatrixReadOnly || window.DOMMatrix;
+    const Matrix =
+      window.DOMMatrixReadOnly || window.DOMMatrix || window.WebKitCSSMatrix || window.CSSMatrix;
+
+    if (!Matrix) {
+      return "none";
+    }
+
     const matrix = new Matrix(transformValue);
 
     if ("is2D" in matrix && matrix.is2D) {
@@ -275,6 +368,25 @@ function getFrozenDuckTransform(duck) {
     return matrix.toString();
   } catch {
     return "none";
+  }
+}
+
+function discardActiveDuckDrag() {
+  if (!activeDuckDrag) {
+    return;
+  }
+
+  const { duck, pointerId } = activeDuckDrag;
+
+  activeDuckDrag = null;
+  duck.classList.remove("is-dragged");
+  duck.style.zIndex = "";
+  duck.style.left = "";
+  duck.style.top = "";
+  duck.style.transform = "";
+
+  if (typeof duck.hasPointerCapture === "function" && duck.hasPointerCapture(pointerId)) {
+    duck.releasePointerCapture(pointerId);
   }
 }
 
@@ -300,7 +412,10 @@ function releaseDuck(pointerId) {
   duck.style.top = "";
   duck.style.transform = "";
   restartDuckAnimation(duck);
-  duck.releasePointerCapture(pointerId);
+
+  if (typeof duck.hasPointerCapture === "function" && duck.hasPointerCapture(pointerId)) {
+    duck.releasePointerCapture(pointerId);
+  }
 
   activeDuckDrag = null;
 }
@@ -345,7 +460,10 @@ function attachDuckDragging(duck) {
     duck.style.zIndex = "1";
     duck.style.transform = activeDuckDrag.frozenTransform;
     duck.classList.add("is-dragged");
-    duck.setPointerCapture(event.pointerId);
+
+    if (typeof duck.setPointerCapture === "function") {
+      duck.setPointerCapture(event.pointerId);
+    }
   });
 
   duck.addEventListener("pointermove", (event) => {
@@ -376,7 +494,7 @@ function createDuck() {
   const duck = document.createElement("img");
 
   duck.className = "duck";
-  duck.src = BASE_DUCK_ASSET.src;
+  duck.src = BASE_DUCK_ASSET.url;
   duck.alt = "";
   duck.decoding = "async";
   duck.draggable = false;
@@ -389,6 +507,9 @@ function createDuck() {
 }
 
 function renderDucks() {
+  discardActiveDuckDrag();
+  duckDragLayer.replaceChildren();
+
   const activeCount = Math.max(
     1,
     Math.round(randomAround(state.count, state.countVariance, 1, 240))
@@ -405,7 +526,7 @@ function renderDucks() {
 function applyValue(key, rawValue) {
   state[key] = normalizeValue(key, rawValue);
   syncControl(key);
-  renderDucks();
+  requestRender();
 }
 
 function resetToDefaults() {
@@ -414,7 +535,7 @@ function resetToDefaults() {
   });
 
   syncAllControls();
-  renderDucks();
+  requestRender();
 }
 
 Object.entries(controls).forEach(([key, control]) => {
@@ -439,8 +560,8 @@ Object.entries(controls).forEach(([key, control]) => {
   });
 });
 
-window.addEventListener("resize", renderDucks);
-window.addEventListener("resize", syncPanelHeight);
+window.addEventListener("resize", requestRender, { passive: true });
+window.addEventListener("resize", requestPanelHeightSync, { passive: true });
 window.addEventListener("pageshow", () => {
   setPanelExpanded(true);
   resetToDefaults();
@@ -478,10 +599,12 @@ document.addEventListener("pointerdown", (event) => {
 
 glassCard.addEventListener("transitionend", () => {
   glassCard.hidden = root.classList.contains("panel-collapsed");
+  requestPanelHeightSync();
 });
 
 setInfoPopupOpen(false);
 setNightMode(false);
 setPanelExpanded(true);
 resetToDefaults();
-syncPanelHeight();
+warmDuckAssets();
+requestPanelHeightSync();
