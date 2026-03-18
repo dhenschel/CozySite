@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CozySite</title>
+    <link rel="stylesheet" href="style.css" />
+    <script src="script.js" defer></script>
+  </head>
+  <body>
+    <button
+      class="info-trigger"
+      id="infoTrigger"
+      type="button"
+      aria-controls="infoPopup"
+      aria-expanded="false"
+      aria-label="Info anzeigen"
+    >
+      i
+    </button>
+    <div class="info-popup" id="infoPopup" role="dialog" aria-modal="false" hidden>
+      <p>Inspiriert von einer sehr wichtigen Leuchte-Ente. Der Rest ist eskaliert.</p>
+    </div>
+    <div class="duck-rain" id="duckRain" aria-hidden="true"></div>
+    <main class="page-shell">
+      <div class="panel-stack">
+        <section class="glass-card" id="glassCard">
+          <div class="card-copy">
+            <p class="eyebrow">CozySite Playground</p>
+            <h1>Duck Rain Configurator</h1>
+            <p class="intro">
+              Passe die fallenden Enten live an. Jeder Regler steuert einen Basiswert,
+              und der passende Abweichungs-Regler bestimmt, wie stark einzelne Enten
+              zufällig davon abweichen dürfen.
+            </p>
+          </div>
+
+          <form class="control-panel" id="duckControls" autocomplete="off">
+            <div class="control-group">
+              <div class="control-heading">
+                <label for="count">Anzahl</label>
+                <input
+                  class="value-input"
+                  id="countNumber"
+                  name="countNumber"
+                  type="number"
+                  min="1"
+                  max="150"
+                  step="1"
+                  value="12"
+                  data-setting="count"
+                />
+              </div>
+              <input id="count" name="count" type="range" min="1" max="150" step="1" value="12" data-setting="count" />
+
+              <div class="control-heading">
+                <label for="countVariance">Max. Abweichung</label>
+                <input
+                  class="value-input"
+                  id="countVarianceNumber"
+                  name="countVarianceNumber"
+                  type="number"
+                  min="0"
+                  max="80"
+                  step="1"
+                  value="4"
+                  data-setting="countVariance"
+                />
+              </div>
+              <input id="countVariance" name="countVariance" type="range" min="0" max="80" step="1" value="4" data-setting="countVariance" />
+            </div>
+
+            <div class="control-group">
+              <div class="control-heading">
+                <label for="size">Größe</label>
+                <input
+                  class="value-input"
+                  id="sizeNumber"
+                  name="sizeNumber"
+                  type="number"
+                  min="24"
+                  max="420"
+                  step="1"
+                  value="72"
+                  data-setting="size"
+                />
+              </div>
+              <input id="size" name="size" type="range" min="24" max="420" step="1" value="72" data-setting="size" />
+
+              <div class="control-heading">
+                <label for="sizeVariance">Max. Abweichung</label>
+                <input
+                  class="value-input"
+                  id="sizeVarianceNumber"
+                  name="sizeVarianceNumber"
+                  type="number"
+                  min="0"
+                  max="240"
+                  step="1"
+                  value="20"
+                  data-setting="sizeVariance"
+                />
+              </div>
+              <input id="sizeVariance" name="sizeVariance" type="range" min="0" max="240" step="1" value="20" data-setting="sizeVariance" />
+            </div>
+
+            <div class="control-group">
+              <div class="control-heading">
+                <label for="rotation">Rotation</label>
+                <input
+                  class="value-input"
+                  id="rotationNumber"
+                  name="rotationNumber"
+                  type="number"
+                  min="0"
+                  max="360"
+                  step="1"
+                  value="28"
+                  data-setting="rotation"
+                />
+              </div>
+              <input id="rotation" name="rotation" type="range" min="0" max="360" step="1" value="28" data-setting="rotation" />
+
+              <div class="control-heading">
+                <label for="rotationVariance">Max. Abweichung</label>
+                <input
+                  class="value-input"
+                  id="rotationVarianceNumber"
+                  name="rotationVarianceNumber"
+                  type="number"
+                  min="0"
+                  max="360"
+                  step="1"
+                  value="18"
+                  data-setting="rotationVariance"
+                />
+              </div>
+              <input id="rotationVariance" name="rotationVariance" type="range" min="0" max="360" step="1" value="18" data-setting="rotationVariance" />
+            </div>
+
+            <div class="control-group">
+              <div class="control-heading">
+                <label for="speed">Geschwindigkeit</label>
+                <input
+                  class="value-input"
+                  id="speedNumber"
+                  name="speedNumber"
+                  type="number"
+                  min="1"
+                  max="60"
+                  step="0.5"
+                  value="14"
+                  data-setting="speed"
+                />
+              </div>
+              <input id="speed" name="speed" type="range" min="1" max="60" step="0.5" value="14" data-setting="speed" />
+
+              <div class="control-heading">
+                <label for="speedVariance">Max. Abweichung</label>
+                <input
+                  class="value-input"
+                  id="speedVarianceNumber"
+                  name="speedVarianceNumber"
+                  type="number"
+                  min="0"
+                  max="30"
+                  step="0.5"
+                  value="4"
+                  data-setting="speedVariance"
+                />
+              </div>
+              <input id="speedVariance" name="speedVariance" type="range" min="0" max="30" step="0.5" value="4" data-setting="speedVariance" />
+            </div>
+
+            <div class="control-group">
+              <div class="control-heading">
+                <label for="drift">Seitliche Bewegung</label>
+                <input
+                  class="value-input"
+                  id="driftNumber"
+                  name="driftNumber"
+                  type="number"
+                  min="0"
+                  max="360"
+                  step="1"
+                  value="26"
+                  data-setting="drift"
+                />
+              </div>
+              <input id="drift" name="drift" type="range" min="0" max="360" step="1" value="26" data-setting="drift" />
+
+              <div class="control-heading">
+                <label for="driftVariance">Max. Abweichung</label>
+                <input
+                  class="value-input"
+                  id="driftVarianceNumber"
+                  name="driftVarianceNumber"
+                  type="number"
+                  min="0"
+                  max="220"
+                  step="1"
+                  value="14"
+                  data-setting="driftVariance"
+                />
+              </div>
+              <input id="driftVariance" name="driftVariance" type="range" min="0" max="220" step="1" value="14" data-setting="driftVariance" />
+            </div>
+          </form>
+
+          <p class="collapse-hint">Der Pfeil rechts kann die Einstellungen verstecken.</p>
+        </section>
+
+        <button
+          class="panel-toggle"
+          id="panelToggle"
+          type="button"
+          aria-controls="glassCard"
+          aria-expanded="true"
+          aria-label="Einstellungen nach rechts einklappen"
+        >
+          <span class="panel-toggle-icon" id="panelToggleIcon">&gt;</span>
+        </button>
+      </div>
+    </main>
+  </body>
+</html>
