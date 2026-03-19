@@ -16,7 +16,7 @@ const APP_VERSION =
   document.querySelector('meta[name="app-version"]')?.content || "dev";
 const FALLBACK_ASSET_SIZE = 1024;
 const BASE_DUCK_ASSET = createDuckAsset("images/duck_glow.png");
-const SPECIAL_DUCK_CHANCE = 1 / 10000;
+const SPECIAL_DUCK_CHANCE = 1 / 100;
 const SPECIAL_DUCK_ASSETS = [
   "architect_duck.png",
   "bread_duck.png",
