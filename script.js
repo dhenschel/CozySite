@@ -32,6 +32,7 @@ const SPECIAL_DUCK_ASSETS = [
 const root = document.documentElement;
 const duckRain = document.getElementById("duckRain");
 const duckDragLayer = document.getElementById("duckDragLayer");
+const pageShell = document.querySelector(".page-shell");
 const form = document.getElementById("duckControls");
 const infoTrigger = document.getElementById("infoTrigger");
 const infoPopup = document.getElementById("infoPopup");
@@ -44,6 +45,7 @@ const controlElements = Array.from(document.querySelectorAll("[data-setting]"));
 let activeDuckDrag = null;
 let renderFrame = 0;
 let panelHeightFrame = 0;
+let activeCardTouchScroll = null;
 
 const controls = controlElements.reduce((map, element) => {
   const key = element.dataset.setting;
@@ -420,6 +422,59 @@ function releaseDuck(pointerId) {
   activeDuckDrag = null;
 }
 
+function shouldHandleCardTouchScroll(target) {
+  return !target.closest('input[type="number"], button');
+}
+
+function clearCardTouchScroll() {
+  activeCardTouchScroll = null;
+}
+
+function handleCardTouchStart(event) {
+  if (event.touches.length !== 1 || !shouldHandleCardTouchScroll(event.target)) {
+    clearCardTouchScroll();
+    return;
+  }
+
+  const touch = event.touches[0];
+
+  activeCardTouchScroll = {
+    startX: touch.clientX,
+    startY: touch.clientY,
+    startScrollTop: pageShell.scrollTop,
+    isScrolling: false,
+  };
+}
+
+function handleCardTouchMove(event) {
+  if (!activeCardTouchScroll || event.touches.length !== 1) {
+    return;
+  }
+
+  const touch = event.touches[0];
+  const deltaX = touch.clientX - activeCardTouchScroll.startX;
+  const deltaY = touch.clientY - activeCardTouchScroll.startY;
+
+  if (!activeCardTouchScroll.isScrolling) {
+    if (Math.abs(deltaY) < 8) {
+      return;
+    }
+
+    if (Math.abs(deltaY) <= Math.abs(deltaX)) {
+      clearCardTouchScroll();
+      return;
+    }
+
+    activeCardTouchScroll.isScrolling = true;
+  }
+
+  pageShell.scrollTop = activeCardTouchScroll.startScrollTop - deltaY;
+
+  if (event.cancelable) {
+    event.preventDefault();
+  }
+}
+
 function attachDuckDragging(duck) {
   duck.addEventListener("dragstart", (event) => {
     event.preventDefault();
@@ -559,6 +614,11 @@ Object.entries(controls).forEach(([key, control]) => {
     control.number.value = String(state[key]);
   });
 });
+
+glassCard.addEventListener("touchstart", handleCardTouchStart, { passive: true });
+glassCard.addEventListener("touchmove", handleCardTouchMove, { passive: false });
+glassCard.addEventListener("touchend", clearCardTouchScroll, { passive: true });
+glassCard.addEventListener("touchcancel", clearCardTouchScroll, { passive: true });
 
 window.addEventListener("resize", requestRender, { passive: true });
 window.addEventListener("resize", requestPanelHeightSync, { passive: true });
