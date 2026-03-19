@@ -30,9 +30,8 @@ body {
   margin: 0;
   min-height: 100vh;
   min-height: 100dvh;
-  overflow-y: auto;
-  overscroll-behavior-y: none;
-  -webkit-overflow-scrolling: touch;
+  overflow: hidden;
+  overscroll-behavior: none;
   font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
   color: var(--text);
   background: none;
@@ -207,7 +206,8 @@ body::before {
 }
 
 .page-shell {
-  position: relative;
+  position: fixed;
+  inset: 0;
   z-index: 5;
   width: 100%;
   min-height: 100vh;
@@ -215,13 +215,16 @@ body::before {
   display: grid;
   justify-items: center;
   align-content: start;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
   padding:
     calc(var(--safe-top) + 32px)
     calc(var(--safe-right) + 24px)
     calc(var(--safe-bottom) + 32px)
     calc(var(--safe-left) + 24px);
   pointer-events: none;
-  overflow: visible;
 }
 
 .panel-stack {
