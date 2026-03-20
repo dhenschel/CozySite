@@ -6,14 +6,36 @@
     <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
-    <meta name="app-version" content="2026.03.19-3" />
+    <meta name="app-version" content="2026.03.20-1" />
     <title>CozySite</title>
-    <link rel="stylesheet" href="style.css?v=2026.03.19-3" />
-    <script src="script.js?v=2026.03.19-3" defer></script>
+    <link rel="stylesheet" href="style.css?v=2026.03.20-1" />
+    <script src="script.js?v=2026.03.20-1" defer></script>
   </head>
   <body>
+    <button
+      class="ui-visibility-toggle"
+      id="uiVisibilityToggle"
+      type="button"
+      aria-pressed="false"
+      aria-label="Bedienelemente ausblenden"
+    >
+      <span class="ui-visibility-icon ui-visibility-icon--visible" aria-hidden="true">
+        <svg viewBox="0 0 24 24" focusable="false">
+          <path d="M2 12s3.7-6 10-6 10 6 10 6-3.7 6-10 6-10-6-10-6Z" />
+          <circle cx="12" cy="12" r="3.2" />
+        </svg>
+      </span>
+      <span class="ui-visibility-icon ui-visibility-icon--hidden" aria-hidden="true">
+        <svg viewBox="0 0 24 24" focusable="false">
+          <path d="M3 3 21 21" />
+          <path d="M10.7 6.2A11 11 0 0 1 12 6c6.3 0 10 6 10 6a18.7 18.7 0 0 1-4 4.2" />
+          <path d="M6.3 6.8A17.8 17.8 0 0 0 2 12s3.7 6 10 6c.5 0 1 0 1.5-.1" />
+          <path d="M9.9 9.9a3.2 3.2 0 0 0 4.2 4.2" />
+        </svg>
+      </span>
+    </button>
     <label class="theme-switch" for="nightModeToggle">
-      <span class="theme-switch-label">Nachtmodus</span>
+      <span class="theme-switch-label" id="themeSwitchLabel">Tagmodus</span>
       <span class="theme-switch-control">
         <input id="nightModeToggle" type="checkbox" />
         <span class="theme-switch-slider" aria-hidden="true"></span>
@@ -39,7 +61,7 @@
         <section class="glass-card" id="glassCard">
           <div class="card-copy">
             <p class="eyebrow">CozySite Playground</p>
-            <h1>Duck Rain Configurator</h1>
+            <h1>Entenregen Konfigurator</h1>
             <p class="intro">
               Passe die fallenden Enten live an. Jeder Regler steuert einen Basiswert,
               und der passende Abweichungs-Regler bestimmt, wie stark einzelne Enten
@@ -59,11 +81,11 @@
                   min="1"
                   max="150"
                   step="1"
-                  value="12"
+                  value="15"
                   data-setting="count"
                 />
               </div>
-              <input id="count" name="count" type="range" min="1" max="150" step="1" value="12" data-setting="count" />
+              <input id="count" name="count" type="range" min="1" max="150" step="1" value="15" data-setting="count" />
 
               <div class="control-heading">
                 <label for="countVariance">Max. Abweichung</label>
@@ -75,11 +97,11 @@
                   min="0"
                   max="80"
                   step="1"
-                  value="4"
+                  value="0"
                   data-setting="countVariance"
                 />
               </div>
-              <input id="countVariance" name="countVariance" type="range" min="0" max="80" step="1" value="4" data-setting="countVariance" />
+              <input id="countVariance" name="countVariance" type="range" min="0" max="80" step="1" value="0" data-setting="countVariance" />
             </div>
 
             <div class="control-group">
@@ -127,11 +149,11 @@
                   min="0"
                   max="360"
                   step="1"
-                  value="28"
+                  value="45"
                   data-setting="rotation"
                 />
               </div>
-              <input id="rotation" name="rotation" type="range" min="0" max="360" step="1" value="28" data-setting="rotation" />
+              <input id="rotation" name="rotation" type="range" min="0" max="360" step="1" value="45" data-setting="rotation" />
 
               <div class="control-heading">
                 <label for="rotationVariance">Max. Abweichung</label>
@@ -143,11 +165,11 @@
                   min="0"
                   max="360"
                   step="1"
-                  value="18"
+                  value="45"
                   data-setting="rotationVariance"
                 />
               </div>
-              <input id="rotationVariance" name="rotationVariance" type="range" min="0" max="360" step="1" value="18" data-setting="rotationVariance" />
+              <input id="rotationVariance" name="rotationVariance" type="range" min="0" max="360" step="1" value="45" data-setting="rotationVariance" />
             </div>
 
             <div class="control-group">
@@ -159,13 +181,13 @@
                   name="speedNumber"
                   type="number"
                   min="1"
-                  max="60"
+                  max="200"
                   step="0.5"
                   value="14"
                   data-setting="speed"
                 />
               </div>
-              <input id="speed" name="speed" type="range" min="1" max="60" step="0.5" value="14" data-setting="speed" />
+              <input id="speed" name="speed" type="range" min="1" max="200" step="0.5" value="14" data-setting="speed" />
 
               <div class="control-heading">
                 <label for="speedVariance">Max. Abweichung</label>
@@ -175,13 +197,13 @@
                   name="speedVarianceNumber"
                   type="number"
                   min="0"
-                  max="30"
+                  max="200"
                   step="0.5"
                   value="4"
                   data-setting="speedVariance"
                 />
               </div>
-              <input id="speedVariance" name="speedVariance" type="range" min="0" max="30" step="0.5" value="4" data-setting="speedVariance" />
+              <input id="speedVariance" name="speedVariance" type="range" min="0" max="200" step="0.5" value="4" data-setting="speedVariance" />
             </div>
 
             <div class="control-group">
@@ -217,10 +239,34 @@
               </div>
               <input id="driftVariance" name="driftVariance" type="range" min="0" max="220" step="1" value="14" data-setting="driftVariance" />
             </div>
+
+            <div class="control-group control-group--glow">
+              <div class="control-heading">
+                <label for="glowLevel">Leuchtkraft</label>
+              </div>
+              <div class="glow-level-slider">
+                <input
+                id="glowLevel"
+                name="glowLevel"
+                type="range"
+                min="0"
+                max="2"
+                step="1"
+                value="0"
+              />
+                <div class="glow-level-ticks" aria-hidden="true">
+                  <span></span>
+                  <span></span>
+                  <span></span>
+                </div>
+              </div>
+            </div>
           </form>
 
           <p class="collapse-hint">
-            Der Pfeil rechts kann die Einstellungen verstecken. Enten lassen sich auch festhalten.
+            Der Pfeil rechts kann die Einstellungen verstecken.<br />
+            Enten lassen sich auch festhalten.<br />
+            Vielleicht siehst du ja sogar eine besondere Ente!
           </p>
         </section>
 
@@ -236,5 +282,33 @@
         </button>
       </div>
     </main>
+    <div
+      class="attention-popup"
+      id="attentionPopup"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="attentionPopupTitle"
+      aria-describedby="attentionPopupMessage"
+      hidden
+    >
+      <div class="attention-popup__panel">
+        <button
+          class="attention-popup__close"
+          id="attentionPopupClose"
+          type="button"
+          aria-label="Hinweis schliessen"
+        >
+          <span aria-hidden="true">&times;</span>
+        </button>
+        <div class="attention-popup__content">
+          <p class="attention-popup__title" id="attentionPopupTitle">
+            Du schaust diesen Enten jetzt schon seit &uuml;ber 10 Minuten zu...
+          </p>
+          <p class="attention-popup__message" id="attentionPopupMessage">
+            Ich entscheide mich einfach daf&uuml;r, das als gutes Zeichen zu werten :)
+          </p>
+        </div>
+      </div>
+    </div>
   </body>
 </html>
