@@ -1,6 +1,5 @@
 const defaults = {
   count: 15,
-  countVariance: 0,
   size: 72,
   sizeVariance: 20,
   rotation: 45,
@@ -15,13 +14,40 @@ const state = { ...defaults };
 const APP_VERSION =
   document.querySelector('meta[name="app-version"]')?.content || "dev";
 const FALLBACK_ASSET_SIZE = 1024;
+const UI_REVEAL_PREWARM_MS = 140;
 const ATTENTION_POPUP_DELAY_MS = 10 * 60 * 1000;
 const ATTENTION_RESET_INACTIVE_MS = 60 * 60 * 1000;
 const MIN_SPEED = 1;
 const MAX_SPEED = 200;
 const DRAG_SCALE = 2;
+const GUARDIAN_EVENT_FAMILY_KEY = "real_duck";
+const GUARDIAN_EVENT_CHANCE = 1 / 10000;
+const GUARDIAN_EVENT_BLACK_FADE_MS = 4200;
+const GUARDIAN_EVENT_DUCK_FADE_MS = 3200;
+const GUARDIAN_EVENT_BUBBLE_FADE_MS = 1400;
+const GUARDIAN_EVENT_HOLD_MS = 10000;
+const VISION_EVENT_CHANCE = 1 / 100;
+const VISION_EVENT_BLUR_FADE_MS = 4200;
+const VISION_EVENT_DUCK_ENTRY_MS = 6200;
+const VISION_EVENT_FIRST_LOOK_MS = 5000;
+const VISION_EVENT_SECOND_LOOK_MS = 3000;
+const VISION_EVENT_THIRD_LOOK_MS = 3000;
+const VISION_EVENT_POST_CLEAR_LOOK_MS = 5000;
+const VISION_EVENT_DUCK_EXIT_MS = 6200;
+const PAINTING_EVENT_CHANCE = 1 / 10000;
+const PAINTING_EVENT_STROKE_MS = 1900;
+const PAINTING_EVENT_SHIFT_MS = 360;
+const PAINTING_EVENT_DUCK_ENTRY_MS = 4200;
+const PAINTING_EVENT_ART_FADE_MS = 5600;
+const PAINTING_EVENT_LOOK_HOLD_MS = 5000;
+const PAINTING_EVENT_TURN_HOLD_MS = 3000;
+const PAINTING_EVENT_BLACK_FADE_MS = 4200;
+const PAINTING_EVENT_BLACK_HOLD_MS = 500;
+const PAINTING_EVENT_TARGET_STROKE_WIDTH = 150;
+const PAINTING_EVENT_CONTACT_OFFSET_RATIO = 0.12;
+const PAINTING_EVENT_MIN_STROKES = 6;
 const SUPER_SIGN_DUCK_FAMILY_KEY = "sign_duck";
-const SUPER_SIGN_DUCK_CHANCE = 1 / 100000;
+const SUPER_SIGN_DUCK_CHANCE = 1 / 10000;
 const SUPER_SIGN_DUCK_SPEED = 5;
 const MODE_DEFAULT_GLOW_LEVELS = {
   day: 0,
@@ -64,6 +90,32 @@ const NON_GLOWING_ASSET_SET = createDuckAssetSet(
   ["duck", "duck.png"],
   SPECIAL_DUCK_FAMILY_ENTRIES.map(([key, , , nonGlowFilename]) => [key, nonGlowFilename])
 );
+const PAINTING_EVENT_ROLLER_ASSET = createDuckAsset("images/other/paint_roller.png");
+const PAINTING_EVENT_WALL_ASSET = createDuckAsset("images/other/red_wall.jpg");
+const PAINTING_EVENT_ART_ASSET = createDuckAsset("images/other/wall_painting.png");
+const PAINTING_EVENT_PULLOVER_BACK_ASSET = createDuckAsset(
+  "images/ducks/back_version/pullover_duck_back.png"
+);
+const PAINTING_EVENT_TSHIRT_BACK_ASSET = createDuckAsset(
+  "images/ducks/back_version/tshirt_duck_back.png"
+);
+const PAINTING_EVENT_PULLOVER_FRONT_ASSET = createDuckAsset(
+  "images/ducks/non_glowing_version/pullover_duck.png"
+);
+const PAINTING_EVENT_TSHIRT_FRONT_ASSET = createDuckAsset(
+  "images/ducks/non_glowing_version/tshirt_duck.png"
+);
+const VISION_EVENT_NUMBER_DUCK_VARIANTS = [
+  ["30_duck", createDuckAsset("images/ducks/non_glowing_version/30_duck.png")],
+  ["50_duck", createDuckAsset("images/ducks/non_glowing_version/50_duck.png")],
+  ["80_duck", createDuckAsset("images/ducks/non_glowing_version/80_duck.png")],
+].map(([key, asset]) => ({ key, asset }));
+const VISION_EVENT_NUMBER_DUCKS_BY_KEY = Object.fromEntries(
+  VISION_EVENT_NUMBER_DUCK_VARIANTS.map((entry) => [entry.key, entry.asset])
+);
+const VISION_EVENT_BACK_ASSET = createDuckAsset("images/ducks/back_version/duck_back.png");
+const VISION_EVENT_SQUINT_ASSET = createDuckAsset("images/ducks/non_glowing_version/squint_duck.png");
+const VISION_EVENT_GLASSES_ASSET = createDuckAsset("images/ducks/non_glowing_version/glasses_duck.png");
 
 const root = document.documentElement;
 const duckRain = document.getElementById("duckRain");
@@ -74,6 +126,17 @@ const infoTrigger = document.getElementById("infoTrigger");
 const infoPopup = document.getElementById("infoPopup");
 const attentionPopup = document.getElementById("attentionPopup");
 const attentionPopupClose = document.getElementById("attentionPopupClose");
+const guardianEvent = document.getElementById("guardianEvent");
+const guardianEventDuck = document.getElementById("guardianEventDuck");
+const visionEvent = document.getElementById("visionEvent");
+const visionEventDuck = document.getElementById("visionEventDuck");
+const paintingEvent = document.getElementById("paintingEvent");
+const paintingEventWall = document.getElementById("paintingEventWall");
+const paintingEventRoller = document.getElementById("paintingEventRoller");
+const paintingEventScene = paintingEvent.querySelector(".painting-event__scene");
+const paintingEventPulloverDuck = document.getElementById("paintingEventPulloverDuck");
+const paintingEventTshirtDuck = document.getElementById("paintingEventTshirtDuck");
+const paintingEventArt = document.getElementById("paintingEventArt");
 const uiVisibilityToggle = document.getElementById("uiVisibilityToggle");
 const nightModeToggle = document.getElementById("nightModeToggle");
 const themeSwitchLabel = document.getElementById("themeSwitchLabel");
@@ -93,6 +156,20 @@ let attentionActiveStartedAt = 0;
 let attentionInactiveStartedAt = 0;
 let attentionTimeoutId = 0;
 let attentionPopupTriggered = false;
+let attentionPopupPending = false;
+let uiRevealFrameId = 0;
+let uiRevealTimeoutId = 0;
+let guardianEventActive = false;
+let guardianEventRunId = 0;
+let guardianEventRestoreUi = false;
+let visionEventActive = false;
+let visionEventRunId = 0;
+let visionEventRestoreUi = false;
+let paintingEventActive = false;
+let paintingEventRunId = 0;
+let paintingEventRestoreUi = false;
+let superSignDuckActive = false;
+let numberedDuckRainMode = false;
 
 const controls = controlElements.reduce((map, element) => {
   const key = element.dataset.setting;
@@ -184,6 +261,18 @@ function warmDuckAssets() {
       ...HALF_GLOWING_ASSET_SET.specials.map((entry) => entry.asset),
       NON_GLOWING_ASSET_SET.base,
       ...NON_GLOWING_ASSET_SET.specials.map((entry) => entry.asset),
+      getDuckAssetForFamily(GLOWING_ASSET_SET, GUARDIAN_EVENT_FAMILY_KEY),
+      PAINTING_EVENT_ROLLER_ASSET,
+      PAINTING_EVENT_WALL_ASSET,
+      PAINTING_EVENT_ART_ASSET,
+      PAINTING_EVENT_PULLOVER_BACK_ASSET,
+      PAINTING_EVENT_TSHIRT_BACK_ASSET,
+      PAINTING_EVENT_PULLOVER_FRONT_ASSET,
+      PAINTING_EVENT_TSHIRT_FRONT_ASSET,
+      ...VISION_EVENT_NUMBER_DUCK_VARIANTS.map((entry) => entry.asset),
+      VISION_EVENT_BACK_ASSET,
+      VISION_EVENT_SQUINT_ASSET,
+      VISION_EVENT_GLASSES_ASSET,
     ];
 
     Promise.allSettled(assets.map(loadDuckAssetDimensions)).then(() => {
@@ -199,6 +288,15 @@ function warmDuckAssets() {
   window.setTimeout(loadAllAssetMetadata, 0);
 }
 
+function syncSpecialEventAssets() {
+  guardianEventDuck.src = getDuckAssetForFamily(GLOWING_ASSET_SET, GUARDIAN_EVENT_FAMILY_KEY).url;
+  visionEventDuck.src = VISION_EVENT_BACK_ASSET.url;
+  paintingEventRoller.src = PAINTING_EVENT_ROLLER_ASSET.url;
+  paintingEventArt.src = PAINTING_EVENT_ART_ASSET.url;
+  paintingEventPulloverDuck.src = PAINTING_EVENT_PULLOVER_BACK_ASSET.url;
+  paintingEventTshirtDuck.src = PAINTING_EVENT_TSHIRT_BACK_ASSET.url;
+}
+
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
@@ -209,11 +307,10 @@ function countDecimals(step) {
   return decimalPart ? decimalPart.length : 0;
 }
 
-function normalizeValue(key, rawValue) {
-  const range = controls[key].range;
-  const min = Number(range.min);
-  const max = Number(range.max);
-  const step = Number(range.step || 1);
+function normalizeValue(key, rawValue, sourceElement = controls[key].range) {
+  const min = Number(sourceElement.min);
+  const max = Number(sourceElement.max);
+  const step = Number(sourceElement.step || 1);
   const precision = countDecimals(step);
   const numericValue = Number(rawValue);
 
@@ -308,29 +405,16 @@ function getDuckAssetForFamily(assetSet, familyKey) {
   return assetSet.byKey[familyKey] || assetSet.base;
 }
 
-function getReferenceAssetForFamily(familyKey) {
-  return NON_GLOWING_ASSET_SET.byKey[familyKey] || NON_GLOWING_ASSET_SET.base;
+function pickVisionNumberDuckVariant() {
+  const index = Math.floor(Math.random() * VISION_EVENT_NUMBER_DUCK_VARIANTS.length);
+  const variant = VISION_EVENT_NUMBER_DUCK_VARIANTS[index];
+
+  loadDuckAssetDimensions(variant.asset);
+  return variant;
 }
 
-function getDuckGlowFilters(glowLevel) {
-  if (glowLevel <= 0) {
-    return {
-      normal: "none",
-      dragged: "none",
-    };
-  }
-
-  if (glowLevel === 1) {
-    return {
-      normal: "drop-shadow(0 6px 10px rgba(255, 255, 255, 0.18))",
-      dragged: "drop-shadow(0 9px 14px rgba(255, 255, 255, 0.24))",
-    };
-  }
-
-  return {
-    normal: "drop-shadow(0 7px 12px rgba(255, 255, 255, 0.28))",
-    dragged: "drop-shadow(0 10px 18px rgba(255, 255, 255, 0.34))",
-  };
+function getReferenceAssetForFamily(familyKey) {
+  return NON_GLOWING_ASSET_SET.byKey[familyKey] || NON_GLOWING_ASSET_SET.base;
 }
 
 function pickDuckVariant(assetSet) {
@@ -369,13 +453,68 @@ function getDuckSizeForMode(logicalSize, asset, familyKey, mode = "normal") {
   return getRenderedDuckSize(logicalSize, asset, familyKey);
 }
 
+function hasActiveSuperEvent() {
+  return guardianEventActive || visionEventActive || paintingEventActive || superSignDuckActive;
+}
+
+function isVisionNumberDuckFamilyKey(familyKey) {
+  return Boolean(VISION_EVENT_NUMBER_DUCKS_BY_KEY[familyKey]);
+}
+
+function isAttentionPopupBlockingSuperEvents() {
+  return attentionPopupPending || !attentionPopup.hidden;
+}
+
+function isMobileSuperEventVibrationEligible() {
+  return (
+    document.visibilityState === "visible" &&
+    typeof navigator !== "undefined" &&
+    typeof navigator.vibrate === "function" &&
+    (navigator.maxTouchPoints > 0 || window.matchMedia("(hover: none), (pointer: coarse)").matches)
+  );
+}
+
+function triggerSuperEventVibration() {
+  if (!isMobileSuperEventVibrationEligible()) {
+    return;
+  }
+
+  try {
+    navigator.vibrate([90, 60, 140]);
+  } catch {
+    // Ignore unsupported or blocked vibration calls.
+  }
+}
+
+function releaseSuperEventLockForDuck(duck) {
+  if (getStoredDuckSpawnMode(duck) === "super-sign") {
+    superSignDuckActive = false;
+    flushDeferredAttentionPopup();
+  }
+}
+
 function createDuckMotionProfile(options = {}) {
   const assetSet = getActiveDuckAssetSet();
+  const isFreshSpawn = !options.mode && !options.familyKey;
+  const fullscreenEventTriggered = isFreshSpawn && maybeTriggerFullscreenSuperEvent();
+  const preservedFamilyKey =
+    options.normalFamilyKey ||
+    (options.familyKey && !isVisionNumberDuckFamilyKey(options.familyKey) ? options.familyKey : "");
   const spawnMode =
     options.mode ||
-    (!options.familyKey && Math.random() < SUPER_SIGN_DUCK_CHANCE ? "super-sign" : "normal");
+    (isFreshSpawn &&
+    !hasActiveSuperEvent() &&
+    !isAttentionPopupBlockingSuperEvents() &&
+    !fullscreenEventTriggered &&
+    Math.random() < SUPER_SIGN_DUCK_CHANCE
+      ? "super-sign"
+      : "normal");
 
   if (spawnMode === "super-sign") {
+    superSignDuckActive = true;
+    if (isFreshSpawn) {
+      triggerSuperEventVibration();
+    }
     const asset = getDuckAssetForFamily(assetSet, SUPER_SIGN_DUCK_FAMILY_KEY);
     const logicalSize = options.logicalSize ?? window.innerWidth;
 
@@ -394,13 +533,14 @@ function createDuckMotionProfile(options = {}) {
 
   const logicalSize =
     options.logicalSize ?? randomAround(state.size, state.sizeVariance, 24, 520);
-  const selectedVariant = options.familyKey
+  const baseVariant = preservedFamilyKey
     ? {
-        familyKey: options.familyKey,
-        asset: getDuckAssetForFamily(assetSet, options.familyKey),
+        familyKey: preservedFamilyKey,
+        asset: getDuckAssetForFamily(assetSet, preservedFamilyKey),
       }
     : pickDuckVariant(assetSet);
-  const size = getDuckSizeForMode(logicalSize, selectedVariant.asset, selectedVariant.familyKey);
+  const selectedVariant = numberedDuckRainMode ? pickVisionNumberDuckVariant() : baseVariant;
+  const size = getDuckSizeForMode(logicalSize, selectedVariant.asset, baseVariant.familyKey);
   const effectiveSpeed = randomAround(state.speed, state.speedVariance, MIN_SPEED, MAX_SPEED);
   const duration = speedValueToDuration(effectiveSpeed);
   const driftBase = randomAround(state.drift, state.driftVariance, 0, 420);
@@ -409,6 +549,7 @@ function createDuckMotionProfile(options = {}) {
     mode: "normal",
     asset: selectedVariant.asset,
     familyKey: selectedVariant.familyKey,
+    normalFamilyKey: baseVariant.familyKey,
     logicalSize,
     size,
     duration,
@@ -461,8 +602,13 @@ function getMatrixRotationDegrees(matrix) {
 
 function syncControl(key) {
   const value = state[key];
-  controls[key].range.value = String(value);
-  controls[key].number.value = String(value);
+  const range = controls[key].range;
+  const number = controls[key].number;
+  const rangeMin = Number(range.min);
+  const rangeMax = Number(range.max);
+
+  range.value = String(clamp(value, rangeMin, rangeMax));
+  number.value = String(value);
 }
 
 function syncAllControls() {
@@ -470,7 +616,7 @@ function syncAllControls() {
 }
 
 function syncPanelHeight() {
-  if (glassCard.hidden) {
+  if (root.classList.contains("panel-collapsed")) {
     panelStack.style.minHeight = "";
     return;
   }
@@ -492,16 +638,18 @@ function requestPanelHeightSync() {
 function setPanelExpanded(isExpanded) {
   if (isExpanded) {
     glassCard.hidden = false;
-    requestPanelHeightSync();
   }
 
   root.classList.toggle("panel-collapsed", !isExpanded);
+  glassCard.setAttribute("aria-hidden", String(!isExpanded));
+  glassCard.inert = !isExpanded;
   panelToggle.setAttribute("aria-expanded", String(isExpanded));
   panelToggle.setAttribute(
     "aria-label",
     isExpanded ? "Einstellungen nach rechts einklappen" : "Einstellungen von rechts ausklappen"
   );
   panelToggleIcon.textContent = isExpanded ? ">" : "<";
+  requestPanelHeightSync();
 }
 
 function setInfoPopupOpen(isOpen) {
@@ -513,11 +661,595 @@ function setAttentionPopupOpen(isOpen) {
   attentionPopup.hidden = !isOpen;
 }
 
+function setGuardianEventVisible(isOpen) {
+  guardianEvent.hidden = !isOpen;
+  guardianEvent.setAttribute("aria-hidden", String(!isOpen));
+}
+
+function setVisionEventVisible(isOpen) {
+  visionEvent.hidden = !isOpen;
+  visionEvent.setAttribute("aria-hidden", String(!isOpen));
+}
+
+function resetVisionEventScene() {
+  visionEvent.classList.remove("is-visible", "is-blurry", "is-duck-visible", "is-duck-exiting");
+  visionEventDuck.src = VISION_EVENT_BACK_ASSET.url;
+  visionEventDuck.style.setProperty("--vision-duck-move-duration", `${VISION_EVENT_DUCK_ENTRY_MS}ms`);
+}
+
+function setNumberedDuckRainMode(isActive) {
+  if (numberedDuckRainMode === isActive) {
+    return;
+  }
+
+  numberedDuckRainMode = isActive;
+}
+
+function setPaintingEventVisible(isOpen) {
+  paintingEvent.hidden = !isOpen;
+  paintingEvent.setAttribute("aria-hidden", String(!isOpen));
+}
+
+function setPaintingEventContentVisible(isVisible) {
+  paintingEventWall.hidden = !isVisible;
+  paintingEventRoller.hidden = !isVisible;
+  paintingEventScene.hidden = !isVisible;
+}
+
+function setSuperEventDucksPaused(isPaused) {
+  root.classList.toggle("guardian-event-active", isPaused);
+  root.classList.toggle("super-event-active", isPaused);
+}
+
+function setSuperEventUiHidden(isHidden) {
+  root.classList.toggle("super-event-ui-hidden", isHidden);
+}
+
+function resetPaintingEventScene() {
+  setPaintingEventContentVisible(true);
+  paintingEvent.classList.remove(
+    "is-visible",
+    "is-painting",
+    "is-ducks-visible",
+    "is-art-visible",
+    "is-blackout-visible"
+  );
+  paintingEventWall.replaceChildren();
+  paintingEventRoller.style.removeProperty("--roller-x");
+  paintingEventRoller.style.removeProperty("--roller-y");
+  paintingEventRoller.style.removeProperty("opacity");
+  paintingEventPulloverDuck.src = PAINTING_EVENT_PULLOVER_BACK_ASSET.url;
+  paintingEventTshirtDuck.src = PAINTING_EVENT_TSHIRT_BACK_ASSET.url;
+  paintingEventArt.src = PAINTING_EVENT_ART_ASSET.url;
+}
+
+function setPaintingRollerPosition(x, y) {
+  paintingEventRoller.style.setProperty("--roller-x", `${x.toFixed(2)}px`);
+  paintingEventRoller.style.setProperty("--roller-y", `${y.toFixed(2)}px`);
+}
+
+function getPaintingRollerMetrics() {
+  const rollerRect = paintingEventRoller.getBoundingClientRect();
+  const rollerWidth = rollerRect.width || PAINTING_EVENT_TARGET_STROKE_WIDTH * 1.45;
+  const rollerHeight = rollerRect.height || rollerWidth * 1.42;
+  const paintWidth = Math.max(PAINTING_EVENT_TARGET_STROKE_WIDTH, rollerWidth * 0.68);
+  const contactOffset = rollerHeight * PAINTING_EVENT_CONTACT_OFFSET_RATIO;
+
+  return {
+    rollerWidth,
+    rollerHeight,
+    paintWidth,
+    contactOffset,
+  };
+}
+
+function createPaintingWallStroke(left, width) {
+  const stroke = document.createElement("div");
+
+  stroke.className = "painting-event__stroke";
+  stroke.style.left = `${left}px`;
+  stroke.style.width = `${width}px`;
+  stroke.style.height = "0px";
+  stroke.style.backgroundImage = `url("${PAINTING_EVENT_WALL_ASSET.url}")`;
+  stroke.style.backgroundPosition = `${-left}px 0px`;
+
+  return stroke;
+}
+
+function setPaintingRollerVisible(isVisible) {
+  paintingEventRoller.style.opacity = isVisible ? "1" : "0";
+}
+
+function updatePaintingStrokeProgress(stroke, progress) {
+  stroke.style.height = `${(window.innerHeight * progress).toFixed(2)}px`;
+}
+
+function animatePaintingStroke(stroke, rollerX, contactOffset, runId) {
+  return new Promise((resolve) => {
+    const strokeStart = performance.now();
+
+    const step = (now) => {
+      if (runId !== paintingEventRunId) {
+        resolve(false);
+        return;
+      }
+
+      const progress = clamp((now - strokeStart) / PAINTING_EVENT_STROKE_MS, 0, 1);
+      const contactY = window.innerHeight * progress;
+
+      updatePaintingStrokeProgress(stroke, progress);
+      setPaintingRollerPosition(rollerX, contactY - contactOffset);
+
+      if (progress < 1) {
+        window.requestAnimationFrame(step);
+        return;
+      }
+
+      resolve(true);
+    };
+
+    window.requestAnimationFrame(step);
+  });
+}
+
+function waitForMilliseconds(ms) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
+async function triggerGuardianEvent() {
+  if (guardianEventActive) {
+    return false;
+  }
+
+  guardianEventActive = true;
+  guardianEventRunId += 1;
+  triggerSuperEventVibration();
+  const runId = guardianEventRunId;
+  const guardianDuckAsset = getDuckAssetForFamily(GLOWING_ASSET_SET, GUARDIAN_EVENT_FAMILY_KEY);
+
+  await loadDuckAssetDimensions(guardianDuckAsset);
+
+  if (runId !== guardianEventRunId) {
+    return false;
+  }
+
+  if (activeDuckDrag) {
+    discardActiveDuckDrag();
+  }
+
+  guardianEventRestoreUi = !root.classList.contains("ui-hidden");
+  setSuperEventUiHidden(true);
+  setUiHidden(true);
+  setInfoPopupOpen(false);
+  setAttentionPopupOpen(false);
+  guardianEventDuck.src = guardianDuckAsset.url;
+  guardianEvent.classList.remove("is-visible", "is-duck-visible", "is-bubble-visible");
+  setGuardianEventVisible(true);
+
+  await waitForMilliseconds(20);
+
+  if (runId !== guardianEventRunId) {
+    return false;
+  }
+
+  guardianEvent.classList.add("is-visible");
+  await waitForMilliseconds(GUARDIAN_EVENT_BLACK_FADE_MS);
+
+  if (runId !== guardianEventRunId) {
+    return false;
+  }
+
+  pauseDuckAnimationClocks();
+  setSuperEventDucksPaused(true);
+  guardianEvent.classList.add("is-duck-visible");
+  await waitForMilliseconds(GUARDIAN_EVENT_DUCK_FADE_MS);
+
+  if (runId !== guardianEventRunId) {
+    return false;
+  }
+
+  guardianEvent.classList.add("is-bubble-visible");
+  await waitForMilliseconds(GUARDIAN_EVENT_HOLD_MS);
+
+  if (runId !== guardianEventRunId) {
+    return false;
+  }
+
+  guardianEvent.classList.remove("is-bubble-visible");
+  await waitForMilliseconds(GUARDIAN_EVENT_BUBBLE_FADE_MS);
+
+  if (runId !== guardianEventRunId) {
+    return false;
+  }
+
+  guardianEvent.classList.remove("is-duck-visible");
+  await waitForMilliseconds(GUARDIAN_EVENT_DUCK_FADE_MS);
+
+  if (runId !== guardianEventRunId) {
+    return false;
+  }
+
+  guardianEvent.classList.remove("is-visible");
+  setSuperEventDucksPaused(false);
+  resumeDuckAnimationClocks();
+  await waitForMilliseconds(GUARDIAN_EVENT_BLACK_FADE_MS);
+
+  if (runId !== guardianEventRunId) {
+    return false;
+  }
+
+  setGuardianEventVisible(false);
+  setSuperEventUiHidden(false);
+  if (guardianEventRestoreUi) {
+    setUiHidden(false);
+  }
+
+  guardianEventRestoreUi = false;
+  guardianEventActive = false;
+  flushDeferredAttentionPopup();
+
+  return true;
+}
+
+async function triggerVisionEvent() {
+  if (visionEventActive) {
+    return false;
+  }
+
+  visionEventActive = true;
+  visionEventRunId += 1;
+  triggerSuperEventVibration();
+  const runId = visionEventRunId;
+  const visionEventAssets = [
+    ...VISION_EVENT_NUMBER_DUCK_VARIANTS.map((entry) => entry.asset),
+    VISION_EVENT_BACK_ASSET,
+    VISION_EVENT_SQUINT_ASSET,
+    VISION_EVENT_GLASSES_ASSET,
+  ];
+
+  try {
+    await Promise.allSettled(visionEventAssets.map(loadDuckAssetDimensions));
+
+    if (runId !== visionEventRunId) {
+      return false;
+    }
+
+    if (activeDuckDrag) {
+      discardActiveDuckDrag();
+    }
+
+    visionEventRestoreUi = !root.classList.contains("ui-hidden");
+    setSuperEventUiHidden(true);
+    setUiHidden(true);
+    setInfoPopupOpen(false);
+    setAttentionPopupOpen(false);
+    resetVisionEventScene();
+    setVisionEventVisible(true);
+
+    await waitForMilliseconds(20);
+
+    if (runId !== visionEventRunId) {
+      return false;
+    }
+
+    visionEvent.classList.add("is-visible");
+    await waitForMilliseconds(40);
+    visionEvent.classList.add("is-blurry");
+    await waitForMilliseconds(VISION_EVENT_BLUR_FADE_MS);
+
+    if (runId !== visionEventRunId) {
+      return false;
+    }
+
+    setNumberedDuckRainMode(true);
+    visionEventDuck.style.setProperty("--vision-duck-move-duration", `${VISION_EVENT_DUCK_ENTRY_MS}ms`);
+    visionEventDuck.src = VISION_EVENT_BACK_ASSET.url;
+    visionEvent.classList.add("is-duck-visible");
+    await waitForMilliseconds(VISION_EVENT_DUCK_ENTRY_MS);
+
+    if (runId !== visionEventRunId) {
+      return false;
+    }
+
+    await waitForMilliseconds(VISION_EVENT_FIRST_LOOK_MS);
+
+    if (runId !== visionEventRunId) {
+      return false;
+    }
+
+    visionEventDuck.src = VISION_EVENT_SQUINT_ASSET.url;
+    await waitForMilliseconds(VISION_EVENT_SECOND_LOOK_MS);
+
+    if (runId !== visionEventRunId) {
+      return false;
+    }
+
+    visionEventDuck.src = VISION_EVENT_GLASSES_ASSET.url;
+    await waitForMilliseconds(VISION_EVENT_THIRD_LOOK_MS);
+
+    if (runId !== visionEventRunId) {
+      return false;
+    }
+
+    visionEventDuck.src = VISION_EVENT_BACK_ASSET.url;
+    visionEvent.classList.remove("is-blurry");
+    await waitForMilliseconds(VISION_EVENT_POST_CLEAR_LOOK_MS);
+
+    if (runId !== visionEventRunId) {
+      return false;
+    }
+
+    visionEventDuck.src = VISION_EVENT_GLASSES_ASSET.url;
+    visionEventDuck.style.setProperty("--vision-duck-move-duration", `${VISION_EVENT_DUCK_EXIT_MS}ms`);
+    setNumberedDuckRainMode(false);
+    visionEvent.classList.add("is-duck-exiting");
+    await waitForMilliseconds(VISION_EVENT_DUCK_EXIT_MS);
+
+    if (runId !== visionEventRunId) {
+      return false;
+    }
+
+    visionEvent.classList.remove("is-duck-visible", "is-duck-exiting");
+    visionEvent.classList.remove("is-visible");
+    await waitForMilliseconds(220);
+
+    return true;
+  } finally {
+    if (runId === visionEventRunId) {
+      setNumberedDuckRainMode(false);
+      resetVisionEventScene();
+      setVisionEventVisible(false);
+      setSuperEventUiHidden(false);
+
+      if (visionEventRestoreUi) {
+        setUiHidden(false);
+      }
+
+      visionEventRestoreUi = false;
+      visionEventActive = false;
+      flushDeferredAttentionPopup();
+    }
+  }
+}
+
+async function triggerPaintingEvent() {
+  if (paintingEventActive) {
+    return false;
+  }
+
+  paintingEventActive = true;
+  paintingEventRunId += 1;
+  triggerSuperEventVibration();
+  const runId = paintingEventRunId;
+  let ducksPaused = false;
+  const paintingEventAssets = [
+    PAINTING_EVENT_ROLLER_ASSET,
+    PAINTING_EVENT_WALL_ASSET,
+    PAINTING_EVENT_ART_ASSET,
+    PAINTING_EVENT_PULLOVER_BACK_ASSET,
+    PAINTING_EVENT_TSHIRT_BACK_ASSET,
+    PAINTING_EVENT_PULLOVER_FRONT_ASSET,
+    PAINTING_EVENT_TSHIRT_FRONT_ASSET,
+  ];
+
+  try {
+    await Promise.allSettled(paintingEventAssets.map(loadDuckAssetDimensions));
+
+    if (runId !== paintingEventRunId) {
+      return false;
+    }
+
+    if (activeDuckDrag) {
+      discardActiveDuckDrag();
+    }
+
+    paintingEventRestoreUi = !root.classList.contains("ui-hidden");
+    setSuperEventUiHidden(true);
+    setUiHidden(true);
+    setInfoPopupOpen(false);
+    setAttentionPopupOpen(false);
+    resetPaintingEventScene();
+    setPaintingRollerVisible(false);
+    setPaintingEventVisible(true);
+
+    await waitForMilliseconds(20);
+
+    if (runId !== paintingEventRunId) {
+      return false;
+    }
+
+    paintingEvent.classList.add("is-visible", "is-painting");
+    await waitForMilliseconds(40);
+
+    const { paintWidth, contactOffset } = getPaintingRollerMetrics();
+
+    const strokeCount = Math.max(
+      PAINTING_EVENT_MIN_STROKES,
+      Math.ceil(window.innerWidth / paintWidth)
+    );
+
+    for (let index = 0; index < strokeCount; index += 1) {
+      const left = index * paintWidth;
+      const width = Math.min(paintWidth, window.innerWidth - left);
+
+      if (width <= 0) {
+        break;
+      }
+
+      const rollerX = left + width / 2;
+      setPaintingRollerVisible(false);
+      setPaintingRollerPosition(rollerX, -contactOffset);
+
+      await waitForMilliseconds(index === 0 ? 40 : PAINTING_EVENT_SHIFT_MS);
+
+      if (runId !== paintingEventRunId) {
+        return false;
+      }
+
+      const stroke = createPaintingWallStroke(left, width);
+      paintingEventWall.appendChild(stroke);
+      setPaintingRollerVisible(true);
+      await waitForMilliseconds(420);
+
+      if (runId !== paintingEventRunId) {
+        return false;
+      }
+
+      const finishedStroke = await animatePaintingStroke(
+        stroke,
+        rollerX,
+        contactOffset,
+        runId
+      );
+
+      if (!finishedStroke || runId !== paintingEventRunId) {
+        return false;
+      }
+    }
+
+    paintingEvent.classList.remove("is-painting");
+    setPaintingRollerVisible(false);
+    pauseDuckAnimationClocks();
+    setSuperEventDucksPaused(true);
+    ducksPaused = true;
+    paintingEvent.classList.add("is-ducks-visible");
+    await waitForMilliseconds(PAINTING_EVENT_DUCK_ENTRY_MS);
+
+    if (runId !== paintingEventRunId) {
+      return false;
+    }
+
+    paintingEvent.classList.add("is-art-visible");
+    await waitForMilliseconds(PAINTING_EVENT_ART_FADE_MS);
+
+    if (runId !== paintingEventRunId) {
+      return false;
+    }
+
+    await waitForMilliseconds(PAINTING_EVENT_LOOK_HOLD_MS);
+
+    if (runId !== paintingEventRunId) {
+      return false;
+    }
+
+    paintingEventPulloverDuck.src = PAINTING_EVENT_PULLOVER_FRONT_ASSET.url;
+    paintingEventTshirtDuck.src = PAINTING_EVENT_TSHIRT_FRONT_ASSET.url;
+    await waitForMilliseconds(PAINTING_EVENT_TURN_HOLD_MS);
+
+    if (runId !== paintingEventRunId) {
+      return false;
+    }
+
+    paintingEvent.classList.add("is-blackout-visible");
+    await waitForMilliseconds(PAINTING_EVENT_BLACK_FADE_MS + PAINTING_EVENT_BLACK_HOLD_MS);
+
+    if (runId !== paintingEventRunId) {
+      return false;
+    }
+
+    paintingEvent.classList.remove("is-painting", "is-art-visible", "is-ducks-visible");
+    paintingEventWall.replaceChildren();
+    setPaintingRollerVisible(false);
+    setPaintingEventContentVisible(false);
+    setSuperEventDucksPaused(false);
+    resumeDuckAnimationClocks();
+    ducksPaused = false;
+    paintingEvent.classList.remove("is-blackout-visible");
+    await waitForMilliseconds(PAINTING_EVENT_BLACK_FADE_MS);
+
+    if (runId !== paintingEventRunId) {
+      return false;
+    }
+
+    paintingEvent.classList.remove("is-visible");
+    await waitForMilliseconds(220);
+
+    return true;
+  } finally {
+    if (runId === paintingEventRunId) {
+      if (ducksPaused) {
+        setSuperEventDucksPaused(false);
+        resumeDuckAnimationClocks();
+      }
+
+      resetPaintingEventScene();
+      setPaintingEventVisible(false);
+      setSuperEventUiHidden(false);
+
+      if (paintingEventRestoreUi) {
+        setUiHidden(false);
+      }
+
+      paintingEventRestoreUi = false;
+      paintingEventActive = false;
+      flushDeferredAttentionPopup();
+    }
+  }
+}
+
+function maybeTriggerVisionEvent() {
+  if (hasActiveSuperEvent() || isAttentionPopupBlockingSuperEvents() || Math.random() >= VISION_EVENT_CHANCE) {
+    return false;
+  }
+
+  void triggerVisionEvent();
+  return true;
+}
+
+function maybeTriggerGuardianEvent() {
+  if (hasActiveSuperEvent() || isAttentionPopupBlockingSuperEvents() || Math.random() >= GUARDIAN_EVENT_CHANCE) {
+    return false;
+  }
+
+  void triggerGuardianEvent();
+  return true;
+}
+
+function maybeTriggerPaintingEvent() {
+  if (hasActiveSuperEvent() || isAttentionPopupBlockingSuperEvents() || Math.random() >= PAINTING_EVENT_CHANCE) {
+    return false;
+  }
+
+  void triggerPaintingEvent();
+  return true;
+}
+
+function maybeTriggerFullscreenSuperEvent() {
+  if (hasActiveSuperEvent() || isAttentionPopupBlockingSuperEvents()) {
+    return false;
+  }
+
+  if (maybeTriggerVisionEvent()) {
+    return true;
+  }
+
+  if (maybeTriggerPaintingEvent()) {
+    return true;
+  }
+
+  return maybeTriggerGuardianEvent();
+}
+
+function clearUiRevealTimers() {
+  if (uiRevealFrameId) {
+    window.cancelAnimationFrame(uiRevealFrameId);
+    uiRevealFrameId = 0;
+  }
+
+  if (uiRevealTimeoutId) {
+    window.clearTimeout(uiRevealTimeoutId);
+    uiRevealTimeoutId = 0;
+  }
+}
+
 function resetAttentionTimerState() {
   attentionElapsedMs = 0;
   attentionActiveStartedAt = 0;
   attentionInactiveStartedAt = 0;
   attentionPopupTriggered = false;
+  attentionPopupPending = false;
   clearAttentionTimeout();
   setAttentionPopupOpen(false);
 }
@@ -549,18 +1281,75 @@ function pauseAttentionTimer() {
 }
 
 function showAttentionPopup() {
-  if (attentionPopupTriggered) {
-    return;
+  if (attentionPopupTriggered || attentionPopupPending) {
+    return false;
   }
 
+  attentionElapsedMs = ATTENTION_POPUP_DELAY_MS;
+  attentionActiveStartedAt = 0;
+  clearAttentionTimeout();
+
+  if (hasActiveSuperEvent()) {
+    attentionPopupPending = true;
+    return false;
+  }
+
+  attentionPopupTriggered = true;
+  setAttentionPopupOpen(true);
+  return true;
+}
+
+function flushDeferredAttentionPopup() {
+  if (!attentionPopupPending || hasActiveSuperEvent() || !isAttentionTimerEligible()) {
+    return false;
+  }
+
+  attentionPopupPending = false;
   attentionPopupTriggered = true;
   attentionElapsedMs = ATTENTION_POPUP_DELAY_MS;
   attentionActiveStartedAt = 0;
   clearAttentionTimeout();
   setAttentionPopupOpen(true);
+  return true;
+}
+
+function pauseDuckAnimationClocks() {
+  const pausedAt = performance.now().toFixed(3);
+
+  duckPool.forEach((duck) => {
+    if (duck.classList.contains("is-dragged")) {
+      return;
+    }
+
+    duck.dataset.animationPausedAt = pausedAt;
+  });
+}
+
+function resumeDuckAnimationClocks() {
+  const resumedAt = performance.now();
+
+  duckPool.forEach((duck) => {
+    const pausedAt = Number(duck.dataset.animationPausedAt || 0);
+
+    if (!pausedAt) {
+      return;
+    }
+
+    const startedAt = Number(duck.dataset.animationStartedAt || 0);
+
+    if (startedAt > 0) {
+      duck.dataset.animationStartedAt = (startedAt + resumedAt - pausedAt).toFixed(3);
+    }
+
+    duck.dataset.animationPausedAt = "";
+  });
 }
 
 function syncAttentionTimer() {
+  if (flushDeferredAttentionPopup()) {
+    return;
+  }
+
   if (!isAttentionTimerEligible()) {
     pauseAttentionTimer();
     return;
@@ -605,7 +1394,17 @@ function syncAttentionTimer() {
 }
 
 function setUiHidden(isHidden) {
-  root.classList.toggle("ui-hidden", isHidden);
+  if (
+    !isHidden &&
+    !root.classList.contains("ui-hidden") &&
+    !root.classList.contains("ui-revealing")
+  ) {
+    uiVisibilityToggle.setAttribute("aria-pressed", "false");
+    uiVisibilityToggle.setAttribute("aria-label", "Bedienelemente ausblenden");
+    return;
+  }
+
+  clearUiRevealTimers();
   uiVisibilityToggle.setAttribute("aria-pressed", String(isHidden));
   uiVisibilityToggle.setAttribute(
     "aria-label",
@@ -613,8 +1412,23 @@ function setUiHidden(isHidden) {
   );
 
   if (isHidden) {
+    root.classList.remove("ui-revealing");
+    root.classList.add("ui-hidden");
     setInfoPopupOpen(false);
+    return;
   }
+
+  root.classList.remove("ui-hidden");
+  root.classList.add("ui-revealing");
+  uiRevealFrameId = window.requestAnimationFrame(() => {
+    uiRevealFrameId = window.requestAnimationFrame(() => {
+      uiRevealFrameId = 0;
+      uiRevealTimeoutId = window.setTimeout(() => {
+        uiRevealTimeoutId = 0;
+        root.classList.remove("ui-revealing");
+      }, UI_REVEAL_PREWARM_MS);
+    });
+  });
 }
 
 function setNightMode(isEnabled) {
@@ -644,6 +1458,7 @@ function setDuckPath(duck, leftPx, topPx, fallDistance, duration, delay = 0) {
   duck.style.setProperty("--fall-end", `${fallDistance.toFixed(2)}px`);
   duck.dataset.fallDistance = fallDistance.toFixed(2);
   duck.dataset.duration = duration.toFixed(2);
+  duck.dataset.delay = delay.toFixed(2);
 }
 
 function restartDuckAnimation(duck) {
@@ -651,20 +1466,35 @@ function restartDuckAnimation(duck) {
     duck.dataset.animationName === "duck-fall-a" ? "duck-fall-b" : "duck-fall-a";
 
   duck.dataset.animationName = nextAnimationName;
+  duck.dataset.animationStartedAt = performance.now().toFixed(3);
+  duck.dataset.animationPausedAt = "";
   duck.style.animationName = nextAnimationName;
 }
 
 function applyDuckMotionProfile(duck, profile) {
-  const { asset, familyKey, logicalSize, size, duration, driftBase, mode = "normal" } = profile;
-  const glowFilters = getDuckGlowFilters(getGlowLevel());
+  const {
+    asset,
+    familyKey,
+    normalFamilyKey = familyKey,
+    logicalSize,
+    size,
+    duration,
+    driftBase,
+    mode = "normal",
+  } = profile;
 
-  duck.src = asset.url;
+  if (duck.dataset.assetUrl !== asset.url) {
+    duck.src = asset.url;
+    duck.dataset.assetUrl = asset.url;
+  }
+
   duck.dataset.familyKey = familyKey;
+  duck.dataset.normalFamilyKey = normalFamilyKey;
   duck.dataset.logicalSize = logicalSize.toFixed(2);
   duck.dataset.spawnMode = mode;
+  duck.dataset.assetWidth = String(asset.sourceWidth || FALLBACK_ASSET_SIZE);
+  duck.dataset.assetHeight = String(asset.sourceHeight || FALLBACK_ASSET_SIZE);
   duck.style.setProperty("--size", size.toFixed(2));
-  duck.style.setProperty("--duck-shadow", glowFilters.normal);
-  duck.style.setProperty("--duck-shadow-dragged", glowFilters.dragged);
   duck.style.setProperty("--scale-start", "1");
   duck.style.setProperty("--scale-mid", "1");
   duck.style.setProperty("--scale-end", "1");
@@ -706,6 +1536,10 @@ function getStoredDuckFamilyKey(duck) {
   return duck.dataset.familyKey || "duck";
 }
 
+function getStoredDuckNormalFamilyKey(duck) {
+  return duck.dataset.normalFamilyKey || getStoredDuckFamilyKey(duck);
+}
+
 function getStoredDuckSpawnMode(duck) {
   return duck.dataset.spawnMode || "normal";
 }
@@ -715,16 +1549,25 @@ function getStoredDuckLogicalSize(duck) {
   return Number.isFinite(logicalSize) ? logicalSize : state.size;
 }
 
+function getStoredDuckAsset(duck) {
+  const sourceWidth = Number(duck.dataset.assetWidth);
+  const sourceHeight = Number(duck.dataset.assetHeight);
+
+  return {
+    sourceWidth: Number.isFinite(sourceWidth) && sourceWidth > 0 ? sourceWidth : FALLBACK_ASSET_SIZE,
+    sourceHeight:
+      Number.isFinite(sourceHeight) && sourceHeight > 0 ? sourceHeight : FALLBACK_ASSET_SIZE,
+  };
+}
+
+function getCurrentDuckSize(duck) {
+  const size = Number.parseFloat(duck.style.getPropertyValue("--size"));
+  return Number.isFinite(size) && size > 0 ? size : getStoredDuckLogicalSize(duck);
+}
+
 function getDuckDisplayHeight(size, asset) {
   const safeWidth = Math.max(asset.sourceWidth || 1, 1);
   return size * ((asset.sourceHeight || safeWidth) / safeWidth);
-}
-
-function getDuckCenter(rect) {
-  return {
-    x: rect.left + rect.width / 2,
-    y: rect.top + rect.height / 2,
-  };
 }
 
 function getDuckPositionFromCenter(center, size, asset, offsetX = 0, offsetY = 0) {
@@ -771,18 +1614,13 @@ function getDuckStartCoordinate(duck, variableName) {
 }
 
 function getDuckAnimationProgress(duck) {
-  const animation = duck.getAnimations().find((entry) => entry.effect);
-
-  if (animation) {
-    const computedTiming = animation.effect.getComputedTiming();
-
-    if (Number.isFinite(computedTiming.progress)) {
-      return clamp(computedTiming.progress, 0, 0.999);
-    }
-  }
-
   const duration = Number(duck.dataset.duration || 0);
-  const delay = Number(duck.style.getPropertyValue("--delay") || 0);
+  const delay = Number(duck.dataset.delay || duck.style.getPropertyValue("--delay") || 0);
+  const startedAt = Number(duck.dataset.animationStartedAt || 0);
+
+  if (duration > 0 && startedAt > 0) {
+    return clamp((performance.now() - startedAt - delay * 1000) / (duration * 1000), 0, 0.999);
+  }
 
   if (duration > 0 && delay < 0) {
     return clamp((-delay) / duration, 0, 0.999);
@@ -796,34 +1634,121 @@ function createDurationProfile() {
   return speedValueToDuration(effectiveSpeed);
 }
 
-function applyDuckAssetVariant(duck, familyKey, logicalSize, mode = "normal") {
-  const asset = getDuckAssetForFamily(getActiveDuckAssetSet(), familyKey);
-  const size = getDuckSizeForMode(logicalSize, asset, familyKey, mode);
-  const glowFilters = getDuckGlowFilters(getGlowLevel());
+function applyDuckAssetVariant(
+  duck,
+  familyKey,
+  logicalSize,
+  mode = "normal",
+  assetSet = getActiveDuckAssetSet(),
+  normalFamilyKey = familyKey
+) {
+  const referenceFamilyKey =
+    normalFamilyKey || (isVisionNumberDuckFamilyKey(familyKey) ? "duck" : familyKey);
+  const resolvedVariant =
+    numberedDuckRainMode && mode === "normal"
+      ? pickVisionNumberDuckVariant()
+      : {
+          familyKey: isVisionNumberDuckFamilyKey(familyKey) ? referenceFamilyKey : familyKey,
+          asset: getDuckAssetForFamily(
+            assetSet,
+            isVisionNumberDuckFamilyKey(familyKey) ? referenceFamilyKey : familyKey
+          ),
+        };
+  const asset = resolvedVariant.asset;
+  const size = getDuckSizeForMode(logicalSize, asset, referenceFamilyKey, mode);
 
-  duck.src = asset.url;
-  duck.dataset.familyKey = familyKey;
+  if (duck.dataset.assetUrl !== asset.url) {
+    duck.src = asset.url;
+    duck.dataset.assetUrl = asset.url;
+  }
+
+  duck.dataset.familyKey = resolvedVariant.familyKey;
+  duck.dataset.normalFamilyKey = referenceFamilyKey;
   duck.dataset.logicalSize = logicalSize.toFixed(2);
+  duck.dataset.assetWidth = String(asset.sourceWidth || FALLBACK_ASSET_SIZE);
+  duck.dataset.assetHeight = String(asset.sourceHeight || FALLBACK_ASSET_SIZE);
   duck.style.setProperty("--size", size.toFixed(2));
-  duck.style.setProperty("--duck-shadow", glowFilters.normal);
-  duck.style.setProperty("--duck-shadow-dragged", glowFilters.dragged);
 
   return { asset, size };
 }
 
-function refreshDuckAssetVariant(duck) {
+function interpolateValue(from, to, progress) {
+  return from + (to - from) * progress;
+}
+
+function getDuckCurrentTranslation(duck, progress = getDuckAnimationProgress(duck)) {
+  const driftStart = Number.parseFloat(duck.style.getPropertyValue("--drift-start")) || 0;
+  const driftMid = Number.parseFloat(duck.style.getPropertyValue("--drift-mid")) || 0;
+  const driftEnd = Number.parseFloat(duck.style.getPropertyValue("--drift-end")) || 0;
+  const fallMid = Number.parseFloat(duck.style.getPropertyValue("--fall-mid")) || 0;
+  const fallEnd = Number.parseFloat(duck.style.getPropertyValue("--fall-end")) || 0;
+
+  if (progress <= 0.5) {
+    const localProgress = progress / 0.5;
+
+    return {
+      x: interpolateValue(driftStart, driftMid, localProgress),
+      y: interpolateValue(0, fallMid, localProgress),
+    };
+  }
+
+  const localProgress = (progress - 0.5) / 0.5;
+
+  return {
+    x: interpolateValue(driftMid, driftEnd, localProgress),
+    y: interpolateValue(fallMid, fallEnd, localProgress),
+  };
+}
+
+function getDuckCurrentGeometry(duck) {
+  const progress = getDuckAnimationProgress(duck);
+  const startLeft = getDuckStartCoordinate(duck, "--start-left");
+  const startTop = getDuckStartCoordinate(duck, "--start-top");
+  const translation = getDuckCurrentTranslation(duck, progress);
+  const size = getCurrentDuckSize(duck);
+  const asset = getStoredDuckAsset(duck);
+  const left = startLeft + translation.x;
+  const top = startTop + translation.y;
+  const height = getDuckDisplayHeight(size, asset);
+
+  return {
+    progress,
+    size,
+    asset,
+    translation,
+    position: { left, top },
+    center: {
+      x: left + size / 2,
+      y: top + height / 2,
+    },
+  };
+}
+
+function refreshDuckAssetVariant(duck, assetSet = getActiveDuckAssetSet()) {
   if (duck.classList.contains("is-dragged")) {
     return;
   }
 
-  const rect = duck.getBoundingClientRect();
-  const center = getDuckCenter(rect);
-  const translation = getCurrentDuckTranslation(duck);
+  const currentGeometry = getDuckCurrentGeometry(duck);
   const familyKey = getStoredDuckFamilyKey(duck);
+  const normalFamilyKey = getStoredDuckNormalFamilyKey(duck);
   const logicalSize = getStoredDuckLogicalSize(duck);
   const spawnMode = getStoredDuckSpawnMode(duck);
-  const { asset, size } = applyDuckAssetVariant(duck, familyKey, logicalSize, spawnMode);
-  const nextPosition = getDuckPositionFromCenter(center, size, asset, translation.x, translation.y);
+  const { asset, size } = applyDuckAssetVariant(
+    duck,
+    familyKey,
+    logicalSize,
+    spawnMode,
+    assetSet,
+    normalFamilyKey
+  );
+  const nextPosition = getDuckPositionFromCenter(
+    currentGeometry.center,
+    size,
+    asset,
+    currentGeometry.translation.x,
+    currentGeometry.translation.y
+  );
 
   duck.style.setProperty("--start-left", `${nextPosition.left.toFixed(2)}px`);
   duck.style.setProperty("--start-top", `${nextPosition.top.toFixed(2)}px`);
@@ -834,11 +1759,11 @@ function refreshDuckMotion(duck) {
     return;
   }
 
-  const rect = duck.getBoundingClientRect();
-  const center = getDuckCenter(rect);
+  const currentGeometry = getDuckCurrentGeometry(duck);
   const profile = createDuckMotionProfile({
     mode: getStoredDuckSpawnMode(duck),
     familyKey: getStoredDuckFamilyKey(duck),
+    normalFamilyKey: getStoredDuckNormalFamilyKey(duck),
     logicalSize: getStoredDuckLogicalSize(duck),
   });
   const { asset, size, duration } = profile;
@@ -846,7 +1771,7 @@ function refreshDuckMotion(duck) {
   applyDuckMotionProfile(duck, profile);
 
   const nextPosition = getDuckPositionFromCenter(
-    center,
+    currentGeometry.center,
     size,
     asset,
     getDuckDriftStartOffset(duck),
@@ -883,9 +1808,11 @@ function refreshDuckSpeed(duck) {
 }
 
 function refreshExistingDucks(updateType) {
+  const activeAssetSet = updateType === "asset" ? getActiveDuckAssetSet() : null;
+
   duckPool.forEach((duck) => {
     if (updateType === "asset") {
-      refreshDuckAssetVariant(duck);
+      refreshDuckAssetVariant(duck, activeAssetSet);
       return;
     }
 
@@ -1079,6 +2006,7 @@ function attachDuckDragging(duck) {
       return;
     }
 
+    releaseSuperEventLockForDuck(duck);
     configureFreshDuckSpawn(duck);
     restartDuckAnimation(duck);
   });
@@ -1163,6 +2091,7 @@ function syncDuckPool(activeCount) {
     const duck = duckPool.pop();
 
     if (duck) {
+      releaseSuperEventLockForDuck(duck);
       duck.remove();
     }
   }
@@ -1182,15 +2111,13 @@ function syncDuckPool(activeCount) {
 
 function renderDucks() {
   discardActiveDuckDrag();
+  superSignDuckActive = false;
 
   if (duckDragLayer.firstChild) {
     duckDragLayer.replaceChildren();
   }
 
-  const activeCount = Math.max(
-    1,
-    Math.round(randomAround(state.count, state.countVariance, 1, 240))
-  );
+  const activeCount = clamp(Math.round(state.count), 1, 400);
 
   syncDuckPool(activeCount);
 
@@ -1204,8 +2131,8 @@ function isSpeedKey(key) {
   return key === "speed" || key === "speedVariance";
 }
 
-function applyValue(key, rawValue) {
-  const nextValue = normalizeValue(key, rawValue);
+function applyValue(key, rawValue, sourceElement = controls[key].range) {
+  const nextValue = normalizeValue(key, rawValue, sourceElement);
 
   if (state[key] === nextValue) {
     syncControl(key);
@@ -1229,7 +2156,7 @@ function resetToDefaults() {
 
 Object.entries(controls).forEach(([key, control]) => {
   control.range.addEventListener("input", () => {
-    const changed = applyValue(key, control.range.value);
+    const changed = applyValue(key, control.range.value, control.range);
 
     if (!changed || MOTION_UPDATE_KEYS.has(key)) {
       return;
@@ -1239,7 +2166,7 @@ Object.entries(controls).forEach(([key, control]) => {
   });
 
   control.range.addEventListener("change", () => {
-    applyValue(key, control.range.value);
+    applyValue(key, control.range.value, control.range);
 
     if (MOTION_UPDATE_KEYS.has(key)) {
       refreshExistingDucks(isSpeedKey(key) ? "speed" : "motion");
@@ -1252,7 +2179,7 @@ Object.entries(controls).forEach(([key, control]) => {
     }
 
     if (!MOTION_UPDATE_KEYS.has(key)) {
-      const changed = applyValue(key, control.number.value);
+      const changed = applyValue(key, control.number.value, control.number);
 
       if (changed) {
         requestRender();
@@ -1261,11 +2188,11 @@ Object.entries(controls).forEach(([key, control]) => {
       return;
     }
 
-    applyValue(key, control.number.value);
+    applyValue(key, control.number.value, control.number);
   });
 
   control.number.addEventListener("change", () => {
-    const changed = applyValue(key, control.number.value);
+    const changed = applyValue(key, control.number.value, control.number);
 
     if (MOTION_UPDATE_KEYS.has(key)) {
       if (changed) {
@@ -1297,10 +2224,22 @@ window.addEventListener("blur", syncAttentionTimer);
 window.addEventListener("pageshow", () => {
   setPanelExpanded(true);
   resetToDefaults();
+  resumeDuckAnimationClocks();
   syncAttentionTimer();
 });
-window.addEventListener("pagehide", pauseAttentionTimer);
-document.addEventListener("visibilitychange", syncAttentionTimer);
+window.addEventListener("pagehide", () => {
+  pauseDuckAnimationClocks();
+  pauseAttentionTimer();
+});
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") {
+    pauseDuckAnimationClocks();
+  } else {
+    resumeDuckAnimationClocks();
+  }
+
+  syncAttentionTimer();
+});
 
 form.addEventListener("reset", (event) => {
   event.preventDefault();
@@ -1318,6 +2257,7 @@ infoTrigger.addEventListener("click", () => {
 
 attentionPopupClose.addEventListener("click", () => {
   setAttentionPopupOpen(false);
+  syncAttentionTimer();
 });
 
 uiVisibilityToggle.addEventListener("click", () => {
@@ -1352,6 +2292,12 @@ glassCard.addEventListener("transitionend", () => {
 
 setInfoPopupOpen(false);
 setAttentionPopupOpen(false);
+syncSpecialEventAssets();
+resetVisionEventScene();
+setVisionEventVisible(false);
+resetPaintingEventScene();
+setPaintingEventVisible(false);
+setGuardianEventVisible(false);
 setUiHidden(false);
 setNightMode(false);
 setPanelExpanded(true);

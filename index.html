@@ -6,10 +6,10 @@
     <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
-    <meta name="app-version" content="2026.03.20-1" />
+    <meta name="app-version" content="2026.03.21-1" />
     <title>CozySite</title>
-    <link rel="stylesheet" href="style.css?v=2026.03.20-1" />
-    <script src="script.js?v=2026.03.20-1" defer></script>
+    <link rel="stylesheet" href="style.css?v=2026.03.21-1" />
+    <script src="script.js?v=2026.03.21-1" defer></script>
   </head>
   <body>
     <button
@@ -54,6 +54,7 @@
     <div class="info-popup" id="infoPopup" role="dialog" aria-modal="false" hidden>
       <p>Inspiriert von einer sehr wichtigen Leuchte-Ente. Der Rest ist eskaliert.</p>
     </div>
+    <div class="glass-blur-sentinel" aria-hidden="true"></div>
     <div class="duck-rain" id="duckRain" aria-hidden="true"></div>
     <div class="duck-drag-layer" id="duckDragLayer" aria-hidden="true"></div>
     <main class="page-shell">
@@ -79,29 +80,13 @@
                   name="countNumber"
                   type="number"
                   min="1"
-                  max="150"
+                  max="400"
                   step="1"
                   value="15"
                   data-setting="count"
                 />
               </div>
               <input id="count" name="count" type="range" min="1" max="150" step="1" value="15" data-setting="count" />
-
-              <div class="control-heading">
-                <label for="countVariance">Max. Abweichung</label>
-                <input
-                  class="value-input"
-                  id="countVarianceNumber"
-                  name="countVarianceNumber"
-                  type="number"
-                  min="0"
-                  max="80"
-                  step="1"
-                  value="0"
-                  data-setting="countVariance"
-                />
-              </div>
-              <input id="countVariance" name="countVariance" type="range" min="0" max="80" step="1" value="0" data-setting="countVariance" />
             </div>
 
             <div class="control-group">
@@ -307,6 +292,37 @@
           <p class="attention-popup__message" id="attentionPopupMessage">
             Ich entscheide mich einfach daf&uuml;r, das als gutes Zeichen zu werten :)
           </p>
+        </div>
+      </div>
+    </div>
+    <div class="vision-event" id="visionEvent" aria-hidden="true" hidden>
+      <div class="vision-event__blur-layer"></div>
+      <div class="vision-event__content">
+        <img class="vision-event__duck" id="visionEventDuck" src="" alt="" />
+      </div>
+    </div>
+    <div class="painting-event" id="paintingEvent" aria-hidden="true" hidden>
+      <div class="painting-event__wall" id="paintingEventWall"></div>
+      <img class="painting-event__roller" id="paintingEventRoller" src="" alt="" />
+      <div class="painting-event__scene">
+        <div class="painting-event__duck-pair" id="paintingEventDuckPair">
+          <img class="painting-event__duck" id="paintingEventTshirtDuck" src="" alt="" />
+          <img class="painting-event__duck" id="paintingEventPulloverDuck" src="" alt="" />
+        </div>
+        <img class="painting-event__art" id="paintingEventArt" src="" alt="" />
+      </div>
+      <div class="painting-event__blackout"></div>
+    </div>
+    <div class="guardian-event" id="guardianEvent" aria-hidden="true" hidden>
+      <div class="guardian-event__content">
+        <img
+          class="guardian-event__duck"
+          id="guardianEventDuck"
+          src="images/ducks/glowing_vesion/real_duck_glow.png?v=2026.03.20-1"
+          alt=""
+        />
+        <div class="guardian-event__bubble" id="guardianEventBubble">
+          Keine Sorge, ich pass auf dich auf, wenn es dunkel ist!
         </div>
       </div>
     </div>
