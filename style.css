@@ -5,7 +5,7 @@
   --glass-border: rgba(255, 255, 255, 0.26);
   --text: rgb(34, 53, 74);
   --font-ui: "Trebuchet MS", "Lucida Sans Unicode", "Lucida Grande", sans-serif;
-  --font-display: "Comic Sans MS", "Chalkboard SE", "Marker Felt", "Arial Rounded MT Bold", cursive;
+  --font-display: "Arial Rounded MT Bold", "Comic Sans MS", "Trebuchet MS", ui-rounded, system-ui, sans-serif;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-right: env(safe-area-inset-right, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -176,6 +176,17 @@ body::before {
 
 .theme-switch-label {
   white-space: nowrap;
+}
+
+.info-trigger,
+.theme-switch,
+.attention-popup__title,
+.attention-popup__close,
+.eyebrow,
+.glass-card h1,
+.control-heading,
+.control-toggle-text {
+  font-style: normal;
 }
 
 .theme-switch-control {
@@ -1010,6 +1021,7 @@ body::before {
   width: 100%;
   margin: 0;
   accent-color: rgb(34, 53, 74);
+  touch-action: pan-y;
 }
 
 .glow-level-slider {
@@ -1023,6 +1035,7 @@ body::before {
   height: 24px;
   margin: 0;
   background: transparent;
+  touch-action: pan-y;
 }
 
 #glowLevel::-webkit-slider-runnable-track {

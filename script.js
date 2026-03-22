@@ -20,6 +20,7 @@ const ATTENTION_POPUP_DELAY_MS = 10 * 60 * 1000;
 const ATTENTION_RESET_INACTIVE_MS = 60 * 60 * 1000;
 const DEFAULT_SPECIAL_DUCKS_ENABLED = true;
 const DEFAULT_SUPER_EVENTS_ENABLED = true;
+const SUPER_EVENT_VIBRATION_PATTERN = [140, 70, 190, 90, 260];
 const MIN_SPEED = 1;
 const MAX_SPEED = 200;
 const DRAG_SCALE = 2;
@@ -156,6 +157,9 @@ let activeDuckDrag = null;
 let renderFrame = 0;
 let panelHeightFrame = 0;
 let activeCardTouchScroll = null;
+let activeRangeTouchScroll = null;
+let viewportWidth = window.innerWidth;
+let viewportHeight = window.innerHeight;
 let attentionElapsedMs = 0;
 let attentionActiveStartedAt = 0;
 let attentionInactiveStartedAt = 0;
@@ -512,7 +516,7 @@ function triggerSuperEventVibration() {
   }
 
   try {
-    navigator.vibrate([90, 60, 140]);
+    navigator.vibrate(SUPER_EVENT_VIBRATION_PATTERN);
   } catch {
     // Ignore unsupported or blocked vibration calls.
   }
@@ -746,6 +750,30 @@ function requestPanelHeightSync() {
     panelHeightFrame = 0;
     syncPanelHeight();
   });
+}
+
+function handleViewportResize() {
+  const nextViewportWidth = window.innerWidth;
+  const nextViewportHeight = window.innerHeight;
+  const widthChanged = Math.abs(nextViewportWidth - viewportWidth) > 2;
+  const heightChanged = Math.abs(nextViewportHeight - viewportHeight) > 2;
+
+  if (!widthChanged && !heightChanged) {
+    return;
+  }
+
+  viewportWidth = nextViewportWidth;
+  viewportHeight = nextViewportHeight;
+  requestPanelHeightSync();
+
+  // Mobile browsers frequently fire resize when their UI bars show or hide.
+  // A full duck rerender there changes random sizes/positions even though the
+  // user did not actually change the configuration.
+  if (hasActiveSuperEvent() || !widthChanged) {
+    return;
+  }
+
+  requestRender();
 }
 
 function setPanelExpanded(isExpanded) {
@@ -2036,6 +2064,10 @@ function clearCardTouchScroll() {
   activeCardTouchScroll = null;
 }
 
+function clearRangeTouchScroll() {
+  activeRangeTouchScroll = null;
+}
+
 function handleCardTouchStart(event) {
   if (event.touches.length !== 1 || !shouldHandleCardTouchScroll(event.target)) {
     clearCardTouchScroll();
@@ -2075,6 +2107,90 @@ function handleCardTouchMove(event) {
   }
 
   pageShell.scrollTop = activeCardTouchScroll.startScrollTop - deltaY;
+
+  if (event.cancelable) {
+    event.preventDefault();
+  }
+}
+
+function syncRangeValueForTouchScroll(rangeInput, rawValue) {
+  if (rangeInput === glowLevelInput) {
+    if (glowLevelInput.value === String(rawValue)) {
+      return;
+    }
+
+    glowLevelInput.value = String(rawValue);
+    refreshExistingDucks("asset");
+    return;
+  }
+
+  const key = rangeInput.dataset.setting;
+
+  if (!key || !controls[key]) {
+    rangeInput.value = String(rawValue);
+    return;
+  }
+
+  const normalizedValue = normalizeValue(key, rawValue, rangeInput);
+  const changed = state[key] !== normalizedValue;
+
+  state[key] = normalizedValue;
+  syncControl(key);
+
+  if (changed && !MOTION_UPDATE_KEYS.has(key)) {
+    requestRender();
+  }
+}
+
+function handleRangeTouchStart(event) {
+  if (event.touches.length !== 1) {
+    clearRangeTouchScroll();
+    return;
+  }
+
+  const rangeInput = event.currentTarget;
+  const touch = event.touches[0];
+
+  activeRangeTouchScroll = {
+    rangeInput,
+    startX: touch.clientX,
+    startY: touch.clientY,
+    startValue: rangeInput.value,
+    startScrollTop: pageShell.scrollTop,
+    isScrolling: false,
+  };
+}
+
+function handleRangeTouchMove(event) {
+  if (
+    !activeRangeTouchScroll ||
+    activeRangeTouchScroll.rangeInput !== event.currentTarget ||
+    event.touches.length !== 1
+  ) {
+    return;
+  }
+
+  const touch = event.touches[0];
+  const deltaX = touch.clientX - activeRangeTouchScroll.startX;
+  const deltaY = touch.clientY - activeRangeTouchScroll.startY;
+
+  if (!activeRangeTouchScroll.isScrolling) {
+    if (Math.abs(deltaY) < 8) {
+      return;
+    }
+
+    if (Math.abs(deltaY) <= Math.abs(deltaX)) {
+      return;
+    }
+
+    activeRangeTouchScroll.isScrolling = true;
+  }
+
+  syncRangeValueForTouchScroll(
+    activeRangeTouchScroll.rangeInput,
+    activeRangeTouchScroll.startValue
+  );
+  pageShell.scrollTop = activeRangeTouchScroll.startScrollTop - deltaY;
 
   if (event.cancelable) {
     event.preventDefault();
@@ -2298,16 +2414,25 @@ Object.entries(controls).forEach(([key, control]) => {
   });
 });
 
+Array.from(form.querySelectorAll('input[type="range"]')).forEach((rangeInput) => {
+  rangeInput.addEventListener("touchstart", handleRangeTouchStart, { passive: true });
+  rangeInput.addEventListener("touchmove", handleRangeTouchMove, { passive: false });
+  rangeInput.addEventListener("touchend", clearRangeTouchScroll, { passive: true });
+  rangeInput.addEventListener("touchcancel", clearRangeTouchScroll, { passive: true });
+});
+
 glassCard.addEventListener("touchstart", handleCardTouchStart, { passive: true });
 glassCard.addEventListener("touchmove", handleCardTouchMove, { passive: false });
 glassCard.addEventListener("touchend", clearCardTouchScroll, { passive: true });
 glassCard.addEventListener("touchcancel", clearCardTouchScroll, { passive: true });
 
-window.addEventListener("resize", requestRender, { passive: true });
-window.addEventListener("resize", requestPanelHeightSync, { passive: true });
+window.addEventListener("resize", handleViewportResize, { passive: true });
 window.addEventListener("focus", syncAttentionTimer);
 window.addEventListener("blur", syncAttentionTimer);
+window.addEventListener("blur", clearRangeTouchScroll);
 window.addEventListener("pageshow", () => {
+  viewportWidth = window.innerWidth;
+  viewportHeight = window.innerHeight;
   setPanelExpanded(true);
   resetToDefaults();
   resumeDuckAnimationClocks();
@@ -2319,6 +2444,7 @@ window.addEventListener("pagehide", () => {
 });
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden") {
+    clearRangeTouchScroll();
     pauseDuckAnimationClocks();
   } else {
     resumeDuckAnimationClocks();
