@@ -15,18 +15,21 @@ const APP_VERSION =
   document.querySelector('meta[name="app-version"]')?.content || "dev";
 const FALLBACK_ASSET_SIZE = 1024;
 const UI_REVEAL_PREWARM_MS = 140;
+const SUPER_EVENTS_HOLD_TRIGGER_MS = 10 * 1000;
 const ATTENTION_POPUP_DELAY_MS = 10 * 60 * 1000;
 const ATTENTION_RESET_INACTIVE_MS = 60 * 60 * 1000;
+const DEFAULT_SPECIAL_DUCKS_ENABLED = true;
+const DEFAULT_SUPER_EVENTS_ENABLED = true;
 const MIN_SPEED = 1;
 const MAX_SPEED = 200;
 const DRAG_SCALE = 2;
+const SUPER_EVENT_CHANCE = 1 / 5000;
+const SUPER_EVENT_TYPES = ["vision", "painting", "guardian", "super-sign"];
 const GUARDIAN_EVENT_FAMILY_KEY = "real_duck";
-const GUARDIAN_EVENT_CHANCE = 1 / 10000;
 const GUARDIAN_EVENT_BLACK_FADE_MS = 4200;
 const GUARDIAN_EVENT_DUCK_FADE_MS = 3200;
 const GUARDIAN_EVENT_BUBBLE_FADE_MS = 1400;
 const GUARDIAN_EVENT_HOLD_MS = 10000;
-const VISION_EVENT_CHANCE = 1 / 100;
 const VISION_EVENT_BLUR_FADE_MS = 4200;
 const VISION_EVENT_DUCK_ENTRY_MS = 6200;
 const VISION_EVENT_FIRST_LOOK_MS = 5000;
@@ -34,7 +37,6 @@ const VISION_EVENT_SECOND_LOOK_MS = 3000;
 const VISION_EVENT_THIRD_LOOK_MS = 3000;
 const VISION_EVENT_POST_CLEAR_LOOK_MS = 5000;
 const VISION_EVENT_DUCK_EXIT_MS = 6200;
-const PAINTING_EVENT_CHANCE = 1 / 10000;
 const PAINTING_EVENT_STROKE_MS = 1900;
 const PAINTING_EVENT_SHIFT_MS = 360;
 const PAINTING_EVENT_DUCK_ENTRY_MS = 4200;
@@ -47,13 +49,12 @@ const PAINTING_EVENT_TARGET_STROKE_WIDTH = 150;
 const PAINTING_EVENT_CONTACT_OFFSET_RATIO = 0.12;
 const PAINTING_EVENT_MIN_STROKES = 6;
 const SUPER_SIGN_DUCK_FAMILY_KEY = "sign_duck";
-const SUPER_SIGN_DUCK_CHANCE = 1 / 10000;
 const SUPER_SIGN_DUCK_SPEED = 5;
 const MODE_DEFAULT_GLOW_LEVELS = {
   day: 0,
   night: 2,
 };
-const SPECIAL_DUCK_CHANCE = 1 / 100;
+const SPECIAL_DUCK_CHANCE = 1 / 500;
 const MOTION_UPDATE_KEYS = new Set([
   "speed",
   "speedVariance",
@@ -141,6 +142,10 @@ const uiVisibilityToggle = document.getElementById("uiVisibilityToggle");
 const nightModeToggle = document.getElementById("nightModeToggle");
 const themeSwitchLabel = document.getElementById("themeSwitchLabel");
 const glowLevelInput = document.getElementById("glowLevel");
+const specialDucksToggleRow = document.getElementById("specialDucksToggleRow");
+const specialDucksToggle = document.getElementById("specialDucksToggle");
+const superEventsToggle = document.getElementById("superEventsToggle");
+const superEventsToggleRow = document.getElementById("superEventsToggleRow");
 const panelStack = document.querySelector(".panel-stack");
 const glassCard = document.getElementById("glassCard");
 const panelToggle = document.getElementById("panelToggle");
@@ -170,6 +175,11 @@ let paintingEventRunId = 0;
 let paintingEventRestoreUi = false;
 let superSignDuckActive = false;
 let numberedDuckRainMode = false;
+let specialDucksOnlyMode = false;
+let specialDucksHoldTimeoutId = 0;
+let suppressSpecialDucksToggleClick = false;
+let superEventsHoldTimeoutId = 0;
+let suppressSuperEventsToggleClick = false;
 
 const controls = controlElements.reduce((map, element) => {
   const key = element.dataset.setting;
@@ -387,6 +397,20 @@ function syncGlowLevelForMode(modeKey) {
   glowLevelInput.value = String(MODE_DEFAULT_GLOW_LEVELS[modeKey]);
 }
 
+function syncSpawnToggleDefaults() {
+  specialDucksToggle.checked = DEFAULT_SPECIAL_DUCKS_ENABLED;
+  superEventsToggle.checked = DEFAULT_SUPER_EVENTS_ENABLED;
+  specialDucksOnlyMode = false;
+}
+
+function areSpecialDucksEnabled() {
+  return specialDucksToggle.checked;
+}
+
+function areSuperEventsEnabled() {
+  return superEventsToggle.checked;
+}
+
 function getActiveDuckAssetSet() {
   const glowLevel = getGlowLevel();
 
@@ -418,7 +442,15 @@ function getReferenceAssetForFamily(familyKey) {
 }
 
 function pickDuckVariant(assetSet) {
-  if (!assetSet.specials.length || Math.random() >= SPECIAL_DUCK_CHANCE) {
+  if (!assetSet.specials.length) {
+    loadDuckAssetDimensions(assetSet.base);
+    return {
+      familyKey: assetSet.baseKey,
+      asset: assetSet.base,
+    };
+  }
+
+  if (!specialDucksOnlyMode && (!areSpecialDucksEnabled() || Math.random() >= SPECIAL_DUCK_CHANCE)) {
     loadDuckAssetDimensions(assetSet.base);
     return {
       familyKey: assetSet.baseKey,
@@ -493,22 +525,103 @@ function releaseSuperEventLockForDuck(duck) {
   }
 }
 
+function pickRandomSuperEventType() {
+  return SUPER_EVENT_TYPES[Math.floor(Math.random() * SUPER_EVENT_TYPES.length)] || "";
+}
+
+function triggerSelectedFullscreenSuperEvent(superEventType) {
+  if (superEventType === "vision") {
+    void triggerVisionEvent();
+    return true;
+  }
+
+  if (superEventType === "painting") {
+    void triggerPaintingEvent();
+    return true;
+  }
+
+  if (superEventType === "guardian") {
+    void triggerGuardianEvent();
+    return true;
+  }
+
+  return false;
+}
+
+function triggerForcedSuperSignEvent() {
+  if (hasActiveSuperEvent() || isAttentionPopupBlockingSuperEvents()) {
+    return false;
+  }
+
+  const targetDuck = duckPool.find((duck) => !duck.classList.contains("is-dragged"));
+
+  if (!targetDuck) {
+    return false;
+  }
+
+  superSignDuckActive = true;
+  triggerSuperEventVibration();
+
+  const profile = createDuckMotionProfile({
+    mode: "super-sign",
+    logicalSize: window.innerWidth,
+  });
+  const { size, duration } = applyDuckMotionProfile(targetDuck, profile);
+  const fallDistance = window.innerHeight + size * 2.8;
+  const startTop = size * -1.45;
+
+  setDuckPath(targetDuck, 0, startTop, fallDistance, duration, 0);
+  restartDuckAnimation(targetDuck);
+  return true;
+}
+
+function triggerForcedRandomSuperEvent() {
+  if (hasActiveSuperEvent() || isAttentionPopupBlockingSuperEvents()) {
+    return false;
+  }
+
+  const selectedSuperEventType = pickRandomSuperEventType();
+
+  if (selectedSuperEventType === "super-sign") {
+    return triggerForcedSuperSignEvent();
+  }
+
+  return triggerSelectedFullscreenSuperEvent(selectedSuperEventType);
+}
+
+function maybeTriggerRandomSuperEvent() {
+  if (
+    !areSuperEventsEnabled() ||
+    hasActiveSuperEvent() ||
+    isAttentionPopupBlockingSuperEvents() ||
+    Math.random() >= SUPER_EVENT_CHANCE
+  ) {
+    return "";
+  }
+
+  const selectedSuperEventType = pickRandomSuperEventType();
+
+  if (selectedSuperEventType === "super-sign") {
+    return "super-sign";
+  }
+
+  if (triggerSelectedFullscreenSuperEvent(selectedSuperEventType)) {
+    return selectedSuperEventType;
+  }
+
+  return "";
+}
+
 function createDuckMotionProfile(options = {}) {
   const assetSet = getActiveDuckAssetSet();
   const isFreshSpawn = !options.mode && !options.familyKey;
-  const fullscreenEventTriggered = isFreshSpawn && maybeTriggerFullscreenSuperEvent();
+  const triggeredSuperEventType = isFreshSpawn ? maybeTriggerRandomSuperEvent() : "";
   const preservedFamilyKey =
     options.normalFamilyKey ||
     (options.familyKey && !isVisionNumberDuckFamilyKey(options.familyKey) ? options.familyKey : "");
   const spawnMode =
     options.mode ||
-    (isFreshSpawn &&
-    !hasActiveSuperEvent() &&
-    !isAttentionPopupBlockingSuperEvents() &&
-    !fullscreenEventTriggered &&
-    Math.random() < SUPER_SIGN_DUCK_CHANCE
-      ? "super-sign"
-      : "normal");
+    (triggeredSuperEventType === "super-sign" ? "super-sign" : "normal");
 
   if (spawnMode === "super-sign") {
     superSignDuckActive = true;
@@ -1189,49 +1302,6 @@ async function triggerPaintingEvent() {
   }
 }
 
-function maybeTriggerVisionEvent() {
-  if (hasActiveSuperEvent() || isAttentionPopupBlockingSuperEvents() || Math.random() >= VISION_EVENT_CHANCE) {
-    return false;
-  }
-
-  void triggerVisionEvent();
-  return true;
-}
-
-function maybeTriggerGuardianEvent() {
-  if (hasActiveSuperEvent() || isAttentionPopupBlockingSuperEvents() || Math.random() >= GUARDIAN_EVENT_CHANCE) {
-    return false;
-  }
-
-  void triggerGuardianEvent();
-  return true;
-}
-
-function maybeTriggerPaintingEvent() {
-  if (hasActiveSuperEvent() || isAttentionPopupBlockingSuperEvents() || Math.random() >= PAINTING_EVENT_CHANCE) {
-    return false;
-  }
-
-  void triggerPaintingEvent();
-  return true;
-}
-
-function maybeTriggerFullscreenSuperEvent() {
-  if (hasActiveSuperEvent() || isAttentionPopupBlockingSuperEvents()) {
-    return false;
-  }
-
-  if (maybeTriggerVisionEvent()) {
-    return true;
-  }
-
-  if (maybeTriggerPaintingEvent()) {
-    return true;
-  }
-
-  return maybeTriggerGuardianEvent();
-}
-
 function clearUiRevealTimers() {
   if (uiRevealFrameId) {
     window.cancelAnimationFrame(uiRevealFrameId);
@@ -1241,6 +1311,20 @@ function clearUiRevealTimers() {
   if (uiRevealTimeoutId) {
     window.clearTimeout(uiRevealTimeoutId);
     uiRevealTimeoutId = 0;
+  }
+}
+
+function clearSpecialDucksHoldTrigger() {
+  if (specialDucksHoldTimeoutId) {
+    window.clearTimeout(specialDucksHoldTimeoutId);
+    specialDucksHoldTimeoutId = 0;
+  }
+}
+
+function clearSuperEventsHoldTrigger() {
+  if (superEventsHoldTimeoutId) {
+    window.clearTimeout(superEventsHoldTimeoutId);
+    superEventsHoldTimeoutId = 0;
   }
 }
 
@@ -1613,13 +1697,13 @@ function getDuckStartCoordinate(duck, variableName) {
   return Number.parseFloat(duck.style.getPropertyValue(variableName)) || 0;
 }
 
-function getDuckAnimationProgress(duck) {
+function getDuckAnimationProgress(duck, now = performance.now()) {
   const duration = Number(duck.dataset.duration || 0);
   const delay = Number(duck.dataset.delay || duck.style.getPropertyValue("--delay") || 0);
   const startedAt = Number(duck.dataset.animationStartedAt || 0);
 
   if (duration > 0 && startedAt > 0) {
-    return clamp((performance.now() - startedAt - delay * 1000) / (duration * 1000), 0, 0.999);
+    return clamp((now - startedAt - delay * 1000) / (duration * 1000), 0, 0.999);
   }
 
   if (duration > 0 && delay < 0) {
@@ -1700,8 +1784,8 @@ function getDuckCurrentTranslation(duck, progress = getDuckAnimationProgress(duc
   };
 }
 
-function getDuckCurrentGeometry(duck) {
-  const progress = getDuckAnimationProgress(duck);
+function getDuckCurrentGeometry(duck, now = performance.now()) {
+  const progress = getDuckAnimationProgress(duck, now);
   const startLeft = getDuckStartCoordinate(duck, "--start-left");
   const startTop = getDuckStartCoordinate(duck, "--start-top");
   const translation = getDuckCurrentTranslation(duck, progress);
@@ -1724,12 +1808,12 @@ function getDuckCurrentGeometry(duck) {
   };
 }
 
-function refreshDuckAssetVariant(duck, assetSet = getActiveDuckAssetSet()) {
+function refreshDuckAssetVariant(duck, assetSet = getActiveDuckAssetSet(), now = performance.now()) {
   if (duck.classList.contains("is-dragged")) {
     return;
   }
 
-  const currentGeometry = getDuckCurrentGeometry(duck);
+  const currentGeometry = getDuckCurrentGeometry(duck, now);
   const familyKey = getStoredDuckFamilyKey(duck);
   const normalFamilyKey = getStoredDuckNormalFamilyKey(duck);
   const logicalSize = getStoredDuckLogicalSize(duck);
@@ -1754,12 +1838,12 @@ function refreshDuckAssetVariant(duck, assetSet = getActiveDuckAssetSet()) {
   duck.style.setProperty("--start-top", `${nextPosition.top.toFixed(2)}px`);
 }
 
-function refreshDuckMotion(duck) {
+function refreshDuckMotion(duck, now = performance.now()) {
   if (duck.classList.contains("is-dragged")) {
     return;
   }
 
-  const currentGeometry = getDuckCurrentGeometry(duck);
+  const currentGeometry = getDuckCurrentGeometry(duck, now);
   const profile = createDuckMotionProfile({
     mode: getStoredDuckSpawnMode(duck),
     familyKey: getStoredDuckFamilyKey(duck),
@@ -1789,7 +1873,7 @@ function refreshDuckMotion(duck) {
   restartDuckAnimation(duck);
 }
 
-function refreshDuckSpeed(duck) {
+function refreshDuckSpeed(duck, now = performance.now()) {
   if (duck.classList.contains("is-dragged")) {
     return;
   }
@@ -1798,7 +1882,7 @@ function refreshDuckSpeed(duck) {
     getStoredDuckSpawnMode(duck) === "super-sign"
       ? speedValueToDuration(SUPER_SIGN_DUCK_SPEED)
       : createDurationProfile();
-  const progress = getDuckAnimationProgress(duck);
+  const progress = getDuckAnimationProgress(duck, now);
   const startLeft = getDuckStartCoordinate(duck, "--start-left");
   const startTop = getDuckStartCoordinate(duck, "--start-top");
   const fallDistance = Number(duck.dataset.fallDistance || 0);
@@ -1809,19 +1893,20 @@ function refreshDuckSpeed(duck) {
 
 function refreshExistingDucks(updateType) {
   const activeAssetSet = updateType === "asset" ? getActiveDuckAssetSet() : null;
+  const now = performance.now();
 
   duckPool.forEach((duck) => {
     if (updateType === "asset") {
-      refreshDuckAssetVariant(duck, activeAssetSet);
+      refreshDuckAssetVariant(duck, activeAssetSet, now);
       return;
     }
 
     if (updateType === "speed") {
-      refreshDuckSpeed(duck);
+      refreshDuckSpeed(duck, now);
       return;
     }
 
-    refreshDuckMotion(duck);
+    refreshDuckMotion(duck, now);
   });
 }
 
@@ -2151,6 +2236,7 @@ function resetToDefaults() {
 
   syncAllControls();
   syncGlowLevelForMode(getModeKey());
+  syncSpawnToggleDefaults();
   requestRender();
 }
 
@@ -2273,6 +2359,85 @@ glowLevelInput.addEventListener("input", () => {
   refreshExistingDucks("asset");
 });
 
+specialDucksToggle.addEventListener("change", () => {
+  if (specialDucksToggle.checked) {
+    return;
+  }
+
+  specialDucksOnlyMode = false;
+  clearSpecialDucksHoldTrigger();
+});
+
+specialDucksToggleRow.addEventListener("pointerdown", (event) => {
+  if ((event.pointerType === "mouse" && event.button !== 0) || specialDucksHoldTimeoutId) {
+    return;
+  }
+
+  specialDucksHoldTimeoutId = window.setTimeout(() => {
+    specialDucksHoldTimeoutId = 0;
+    specialDucksOnlyMode = !specialDucksOnlyMode;
+    suppressSpecialDucksToggleClick = true;
+  }, SUPER_EVENTS_HOLD_TRIGGER_MS);
+});
+
+specialDucksToggleRow.addEventListener("pointerup", () => {
+  clearSpecialDucksHoldTrigger();
+});
+
+specialDucksToggleRow.addEventListener("pointercancel", () => {
+  clearSpecialDucksHoldTrigger();
+});
+
+specialDucksToggleRow.addEventListener("lostpointercapture", () => {
+  clearSpecialDucksHoldTrigger();
+});
+
+specialDucksToggleRow.addEventListener("click", (event) => {
+  if (!suppressSpecialDucksToggleClick) {
+    return;
+  }
+
+  suppressSpecialDucksToggleClick = false;
+  event.preventDefault();
+  event.stopPropagation();
+});
+
+superEventsToggleRow.addEventListener("pointerdown", (event) => {
+  if ((event.pointerType === "mouse" && event.button !== 0) || superEventsHoldTimeoutId) {
+    return;
+  }
+
+  superEventsHoldTimeoutId = window.setTimeout(() => {
+    superEventsHoldTimeoutId = 0;
+
+    if (triggerForcedRandomSuperEvent()) {
+      suppressSuperEventsToggleClick = true;
+    }
+  }, SUPER_EVENTS_HOLD_TRIGGER_MS);
+});
+
+superEventsToggleRow.addEventListener("pointerup", () => {
+  clearSuperEventsHoldTrigger();
+});
+
+superEventsToggleRow.addEventListener("pointercancel", () => {
+  clearSuperEventsHoldTrigger();
+});
+
+superEventsToggleRow.addEventListener("lostpointercapture", () => {
+  clearSuperEventsHoldTrigger();
+});
+
+superEventsToggleRow.addEventListener("click", (event) => {
+  if (!suppressSuperEventsToggleClick) {
+    return;
+  }
+
+  suppressSuperEventsToggleClick = false;
+  event.preventDefault();
+  event.stopPropagation();
+});
+
 document.addEventListener("pointerdown", (event) => {
   if (
     infoPopup.hidden ||
@@ -2288,6 +2453,15 @@ document.addEventListener("pointerdown", (event) => {
 glassCard.addEventListener("transitionend", () => {
   glassCard.hidden = root.classList.contains("panel-collapsed");
   requestPanelHeightSync();
+});
+
+window.addEventListener("blur", clearSuperEventsHoldTrigger);
+window.addEventListener("blur", clearSpecialDucksHoldTrigger);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") {
+    clearSpecialDucksHoldTrigger();
+    clearSuperEventsHoldTrigger();
+  }
 });
 
 setInfoPopupOpen(false);
