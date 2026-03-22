@@ -1,0 +1,17 @@
+{
+  "name": "CozySite",
+  "short_name": "CozySite",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "theme_color": "#bae9ff",
+  "background_color": "#bae9ff",
+  "icons": [
+    {
+      "src": "images/ducks/non_glowing_version/duck.png?v=2026.03.22-6",
+      "sizes": "950x950",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
