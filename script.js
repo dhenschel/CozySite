@@ -51,6 +51,10 @@ const PAINTING_EVENT_CONTACT_OFFSET_RATIO = 0.12;
 const PAINTING_EVENT_MIN_STROKES = 6;
 const SUPER_SIGN_DUCK_FAMILY_KEY = "sign_duck";
 const SUPER_SIGN_DUCK_SPEED = 5;
+const THEME_COLOR_DAY = "rgb(186, 233, 255)";
+const THEME_COLOR_NIGHT = "rgb(9, 24, 56)";
+const THEME_COLOR_PAINTING = "rgb(154, 32, 37)";
+const THEME_COLOR_BLACKOUT = "#000000";
 const MODE_DEFAULT_GLOW_LEVELS = {
   day: 0,
   night: 2,
@@ -122,6 +126,7 @@ const VISION_EVENT_GLASSES_ASSET = createDuckAsset("images/ducks/non_glowing_ver
 const root = document.documentElement;
 const duckRain = document.getElementById("duckRain");
 const duckDragLayer = document.getElementById("duckDragLayer");
+const themeColorMeta = document.querySelector('meta[name="theme-color"]');
 const pageShell = document.querySelector(".page-shell");
 const form = document.getElementById("duckControls");
 const infoTrigger = document.getElementById("infoTrigger");
@@ -1581,6 +1586,60 @@ function setNightMode(isEnabled) {
   syncGlowLevelForMode(getModeKey(isEnabled));
 }
 
+function getActiveThemeColor() {
+  if (!guardianEvent.hidden) {
+    return THEME_COLOR_BLACKOUT;
+  }
+
+  if (!paintingEvent.hidden) {
+    if (paintingEvent.classList.contains("is-blackout-visible")) {
+      return THEME_COLOR_BLACKOUT;
+    }
+
+    return THEME_COLOR_PAINTING;
+  }
+
+  return root.classList.contains("night-mode") ? THEME_COLOR_NIGHT : THEME_COLOR_DAY;
+}
+
+function syncThemeColor() {
+  if (!(themeColorMeta instanceof HTMLMetaElement)) {
+    return;
+  }
+
+  const nextThemeColor = getActiveThemeColor();
+
+  if (themeColorMeta.content === nextThemeColor) {
+    return;
+  }
+
+  themeColorMeta.content = nextThemeColor;
+}
+
+function initializeThemeColorSync() {
+  syncThemeColor();
+
+  if (typeof MutationObserver !== "function") {
+    return;
+  }
+
+  const themeColorObserver = new MutationObserver(() => {
+    syncThemeColor();
+  });
+
+  themeColorObserver.observe(root, {
+    attributes: true,
+    attributeFilter: ["class"],
+  });
+
+  [guardianEvent, paintingEvent].forEach((element) => {
+    themeColorObserver.observe(element, {
+      attributes: true,
+      attributeFilter: ["class", "hidden"],
+    });
+  });
+}
+
 function requestRender() {
   if (renderFrame) {
     return;
@@ -2632,6 +2691,7 @@ document.addEventListener("visibilitychange", () => {
 setInfoPopupOpen(false);
 setAttentionPopupOpen(false);
 syncSpecialEventAssets();
+initializeThemeColorSync();
 resetVisionEventScene();
 setVisionEventVisible(false);
 resetPaintingEventScene();
