@@ -405,6 +405,15 @@ body::before {
     background 4200ms ease;
 }
 
+.vision-event__duck,
+.painting-event__duck,
+.guardian-event__duck {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-user-drag: none;
+  -webkit-touch-callout: none;
+}
+
 .vision-event__duck {
   position: absolute;
   left: 50%;
@@ -511,8 +520,6 @@ body::before {
 .painting-event__duck {
   width: clamp(140px, 18vw, 250px);
   height: auto;
-  user-select: none;
-  -webkit-user-drag: none;
 }
 
 .painting-event__bubble {
@@ -755,8 +762,12 @@ body::before {
 .duck-rain {
   position: fixed;
   inset: 0;
+  display: block;
   z-index: 0;
+  width: 100%;
+  height: 100%;
   pointer-events: auto;
+  touch-action: none;
   overflow: hidden;
   contain: layout paint;
   transform: translateZ(0);
@@ -777,8 +788,10 @@ body::before {
   left: var(--start-left);
   display: block;
   width: calc(var(--size) * 1px);
-  height: auto;
+  height: calc(var(--display-height) * 1px);
   max-width: none;
+  object-fit: contain;
+  object-position: center;
   opacity: 1;
   animation-name: duck-fall-a;
   animation-timing-function: linear;
