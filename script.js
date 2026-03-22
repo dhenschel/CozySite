@@ -2231,6 +2231,10 @@ function handleRangeTouchMove(event) {
 }
 
 function attachDuckDragging(duck) {
+  duck.addEventListener("contextmenu", (event) => {
+    event.preventDefault();
+  });
+
   duck.addEventListener("dragstart", (event) => {
     event.preventDefault();
   });
