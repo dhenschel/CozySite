@@ -54,7 +54,7 @@ const MODE_DEFAULT_GLOW_LEVELS = {
   day: 0,
   night: 2,
 };
-const SPECIAL_DUCK_CHANCE = 1 / 500;
+const SPECIAL_DUCK_CHANCE = 1 / 100;
 const MOTION_UPDATE_KEYS = new Set([
   "speed",
   "speedVariance",
