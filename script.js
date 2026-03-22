@@ -21,6 +21,10 @@ const ATTENTION_RESET_INACTIVE_MS = 60 * 60 * 1000;
 const DEFAULT_SPECIAL_DUCKS_ENABLED = true;
 const DEFAULT_SUPER_EVENTS_ENABLED = true;
 const SUPER_EVENT_VIBRATION_PATTERN = [140, 70, 190, 90, 260];
+const SECRET_SPECIAL_DUCKS_VIBRATION_PATTERN = [90, 50, 90];
+const MOBILE_MANUAL_COUNT_MAX = 400;
+const DESKTOP_MANUAL_COUNT_MAX = 1000;
+const DESKTOP_LAYOUT_BREAKPOINT = 921;
 const MIN_SPEED = 1;
 const MAX_SPEED = 200;
 const DRAG_SCALE = 2;
@@ -55,6 +59,8 @@ const THEME_COLOR_DAY = "rgb(186, 233, 255)";
 const THEME_COLOR_NIGHT = "rgb(9, 24, 56)";
 const THEME_COLOR_PAINTING = "rgb(154, 32, 37)";
 const THEME_COLOR_BLACKOUT = "#000000";
+const PROTECTED_DUCK_IMAGE_SELECTOR =
+  ".duck, .vision-event__duck, .painting-event__duck, .guardian-event__duck";
 const MODE_DEFAULT_GLOW_LEVELS = {
   day: 0,
   night: 2,
@@ -125,8 +131,11 @@ const VISION_EVENT_GLASSES_ASSET = createDuckAsset("images/ducks/non_glowing_ver
 
 const root = document.documentElement;
 const duckRain = document.getElementById("duckRain");
-const duckDragLayer = document.getElementById("duckDragLayer");
 const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+const duckContext =
+  duckRain instanceof HTMLCanvasElement
+    ? duckRain.getContext("2d", { alpha: true })
+    : null;
 const pageShell = document.querySelector(".page-shell");
 const form = document.getElementById("duckControls");
 const infoTrigger = document.getElementById("infoTrigger");
@@ -207,6 +216,11 @@ const controls = controlElements.reduce((map, element) => {
   return nextMap;
 }, {});
 const rangeInputs = Array.from(form.querySelectorAll('input[type="range"]'));
+let duckRenderLoopFrame = 0;
+let duckDevicePixelRatio = 1;
+let duckCanvasWidth = 0;
+let duckCanvasHeight = 0;
+let duckIdCounter = 0;
 
 function versionedUrl(path) {
   const separator = path.includes("?") ? "&" : "?";
@@ -221,6 +235,7 @@ function createDuckAsset(path) {
     sourceHeight: FALLBACK_ASSET_SIZE,
     dimensionsReady: false,
     loadPromise: null,
+    image: null,
   };
 }
 
@@ -257,12 +272,14 @@ function loadDuckAssetDimensions(asset) {
 
     probe.decoding = "async";
     probe.onload = () => {
+      asset.image = probe;
       asset.sourceWidth = probe.naturalWidth || FALLBACK_ASSET_SIZE;
       asset.sourceHeight = probe.naturalHeight || FALLBACK_ASSET_SIZE;
       asset.dimensionsReady = true;
       resolve(asset);
     };
     probe.onerror = () => {
+      asset.image = null;
       asset.dimensionsReady = true;
       resolve(asset);
     };
@@ -272,40 +289,78 @@ function loadDuckAssetDimensions(asset) {
   return asset.loadPromise;
 }
 
-function warmDuckAssets() {
-  const loadAllAssetMetadata = () => {
-    const assets = [
-      GLOWING_ASSET_SET.base,
-      ...GLOWING_ASSET_SET.specials.map((entry) => entry.asset),
-      HALF_GLOWING_ASSET_SET.base,
-      ...HALF_GLOWING_ASSET_SET.specials.map((entry) => entry.asset),
-      NON_GLOWING_ASSET_SET.base,
-      ...NON_GLOWING_ASSET_SET.specials.map((entry) => entry.asset),
-      getDuckAssetForFamily(GLOWING_ASSET_SET, GUARDIAN_EVENT_FAMILY_KEY),
-      PAINTING_EVENT_ROLLER_ASSET,
-      PAINTING_EVENT_WALL_ASSET,
-      PAINTING_EVENT_ART_ASSET,
-      PAINTING_EVENT_PULLOVER_BACK_ASSET,
-      PAINTING_EVENT_TSHIRT_BACK_ASSET,
-      PAINTING_EVENT_PULLOVER_FRONT_ASSET,
-      PAINTING_EVENT_TSHIRT_FRONT_ASSET,
-      ...VISION_EVENT_NUMBER_DUCK_VARIANTS.map((entry) => entry.asset),
-      VISION_EVENT_BACK_ASSET,
-      VISION_EVENT_SQUINT_ASSET,
-      VISION_EVENT_GLASSES_ASSET,
-    ];
+function getDuckAssetSetAssets(assetSet) {
+  return [assetSet.base, ...assetSet.specials.map((entry) => entry.asset)];
+}
 
-    Promise.allSettled(assets.map(loadDuckAssetDimensions)).then(() => {
-      requestRender();
-    });
-  };
+function dedupeDuckAssets(assets) {
+  const seenUrls = new Set();
 
+  return assets.filter((asset) => {
+    if (!asset?.url || seenUrls.has(asset.url)) {
+      return false;
+    }
+
+    seenUrls.add(asset.url);
+    return true;
+  });
+}
+
+function scheduleAssetWarmup(callback, timeout = 1500) {
   if ("requestIdleCallback" in window) {
-    window.requestIdleCallback(loadAllAssetMetadata, { timeout: 1500 });
+    window.requestIdleCallback(callback, { timeout });
     return;
   }
 
-  window.setTimeout(loadAllAssetMetadata, 0);
+  window.setTimeout(callback, 120);
+}
+
+function warmDuckAssets() {
+  const activeAssetSet = getActiveDuckAssetSet();
+  const primaryAssets = dedupeDuckAssets(getDuckAssetSetAssets(activeAssetSet));
+  const deferredAssets = dedupeDuckAssets([
+    ...getDuckAssetSetAssets(GLOWING_ASSET_SET),
+    ...getDuckAssetSetAssets(HALF_GLOWING_ASSET_SET),
+    ...getDuckAssetSetAssets(NON_GLOWING_ASSET_SET),
+    getDuckAssetForFamily(GLOWING_ASSET_SET, GUARDIAN_EVENT_FAMILY_KEY),
+    PAINTING_EVENT_ROLLER_ASSET,
+    PAINTING_EVENT_WALL_ASSET,
+    PAINTING_EVENT_ART_ASSET,
+    PAINTING_EVENT_PULLOVER_BACK_ASSET,
+    PAINTING_EVENT_TSHIRT_BACK_ASSET,
+    PAINTING_EVENT_PULLOVER_FRONT_ASSET,
+    PAINTING_EVENT_TSHIRT_FRONT_ASSET,
+    ...VISION_EVENT_NUMBER_DUCK_VARIANTS.map((entry) => entry.asset),
+    VISION_EVENT_BACK_ASSET,
+    VISION_EVENT_SQUINT_ASSET,
+    VISION_EVENT_GLASSES_ASSET,
+  ]).filter((asset) => !primaryAssets.some((primaryAsset) => primaryAsset.url === asset.url));
+
+  const warmDeferredAssetsInChunks = (remainingAssets) => {
+    if (!remainingAssets.length) {
+      return;
+    }
+
+    const nextChunk = remainingAssets.splice(0, 6);
+
+    Promise.allSettled(nextChunk.map(loadDuckAssetDimensions)).finally(() => {
+      if (!remainingAssets.length) {
+        return;
+      }
+
+      scheduleAssetWarmup(() => {
+        warmDeferredAssetsInChunks(remainingAssets);
+      }, 2000);
+    });
+  };
+
+  Promise.allSettled(primaryAssets.map(loadDuckAssetDimensions)).then(() => {
+    requestRender();
+  });
+
+  scheduleAssetWarmup(() => {
+    warmDeferredAssetsInChunks([...deferredAssets]);
+  }, 2000);
 }
 
 function syncSpecialEventAssets() {
@@ -327,9 +382,42 @@ function countDecimals(step) {
   return decimalPart ? decimalPart.length : 0;
 }
 
+function isDesktopLayout() {
+  return viewportWidth >= DESKTOP_LAYOUT_BREAKPOINT;
+}
+
+function getManualCountMax() {
+  return isDesktopLayout() ? DESKTOP_MANUAL_COUNT_MAX : MOBILE_MANUAL_COUNT_MAX;
+}
+
+function syncResponsiveControlLimits() {
+  const countNumberInput = controls.count?.number;
+  const nextManualCountMax = getManualCountMax();
+
+  if (!(countNumberInput instanceof HTMLInputElement)) {
+    return false;
+  }
+
+  countNumberInput.max = String(nextManualCountMax);
+
+  if (state.count > nextManualCountMax) {
+    state.count = nextManualCountMax;
+    syncControl("count");
+    return true;
+  }
+
+  syncControl("count");
+  return false;
+}
+
 function normalizeValue(key, rawValue, sourceElement = controls[key].range) {
   const min = Number(sourceElement.min);
-  const max = Number(sourceElement.max);
+  const max =
+    key === "count" &&
+    sourceElement instanceof HTMLInputElement &&
+    sourceElement.type === "number"
+      ? getManualCountMax()
+      : Number(sourceElement.max);
   const step = Number(sourceElement.step || 1);
   const precision = countDecimals(step);
   const numericValue = Number(rawValue);
@@ -452,6 +540,18 @@ function getReferenceAssetForFamily(familyKey) {
   return NON_GLOWING_ASSET_SET.byKey[familyKey] || NON_GLOWING_ASSET_SET.base;
 }
 
+function isProtectedDuckImageTarget(target) {
+  return target instanceof Element && Boolean(target.closest(PROTECTED_DUCK_IMAGE_SELECTOR));
+}
+
+function protectDuckImage(image) {
+  if (!(image instanceof HTMLImageElement)) {
+    return;
+  }
+
+  image.draggable = false;
+}
+
 function pickDuckVariant(assetSet) {
   if (!assetSet.specials.length) {
     loadDuckAssetDimensions(assetSet.base);
@@ -529,6 +629,18 @@ function triggerSuperEventVibration() {
   }
 }
 
+function triggerSecretSpecialDucksVibration() {
+  if (!isMobileSuperEventVibrationEligible()) {
+    return;
+  }
+
+  try {
+    navigator.vibrate(SECRET_SPECIAL_DUCKS_VIBRATION_PATTERN);
+  } catch {
+    // Ignore unsupported or blocked vibration calls.
+  }
+}
+
 function releaseSuperEventLockForDuck(duck) {
   if (getStoredDuckSpawnMode(duck) === "super-sign") {
     superSignDuckActive = false;
@@ -564,7 +676,7 @@ function triggerForcedSuperSignEvent() {
     return false;
   }
 
-  const targetDuck = duckPool.find((duck) => !duck.classList.contains("is-dragged"));
+  const targetDuck = duckPool.find((duck) => !duck.isDragged);
 
   if (!targetDuck) {
     return false;
@@ -591,13 +703,42 @@ function triggerForcedRandomSuperEvent() {
     return false;
   }
 
-  const selectedSuperEventType = pickRandomSuperEventType();
+  const eventTypes = [...SUPER_EVENT_TYPES];
 
-  if (selectedSuperEventType === "super-sign") {
-    return triggerForcedSuperSignEvent();
+  for (let index = eventTypes.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    const currentValue = eventTypes[index];
+
+    eventTypes[index] = eventTypes[swapIndex];
+    eventTypes[swapIndex] = currentValue;
   }
 
-  return triggerSelectedFullscreenSuperEvent(selectedSuperEventType);
+  for (const selectedSuperEventType of eventTypes) {
+    if (selectedSuperEventType === "super-sign") {
+      if (triggerForcedSuperSignEvent()) {
+        return true;
+      }
+
+      continue;
+    }
+
+    if (triggerSelectedFullscreenSuperEvent(selectedSuperEventType)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function preloadActiveSpecialDuckAssets() {
+  const activeAssetSet = getActiveDuckAssetSet();
+  const specialAssets = activeAssetSet.specials.map((entry) => entry.asset);
+
+  if (!specialAssets.length) {
+    return Promise.resolve();
+  }
+
+  return Promise.allSettled(specialAssets.map(loadDuckAssetDimensions)).then(() => undefined);
 }
 
 function maybeTriggerRandomSuperEvent() {
@@ -681,49 +822,6 @@ function createDuckMotionProfile(options = {}) {
   };
 }
 
-function getTransformMatrix(duck) {
-  const transformValue = window.getComputedStyle(duck).transform;
-
-  if (!transformValue || transformValue === "none") {
-    return null;
-  }
-
-  try {
-    const Matrix =
-      window.DOMMatrixReadOnly || window.DOMMatrix || window.WebKitCSSMatrix || window.CSSMatrix;
-
-    if (!Matrix) {
-      return null;
-    }
-
-    return new Matrix(transformValue);
-  } catch {
-    return null;
-  }
-}
-
-function getCurrentDuckTranslation(duck) {
-  const matrix = getTransformMatrix(duck);
-
-  if (!matrix) {
-    return { x: 0, y: 0 };
-  }
-
-  return {
-    x: Number(matrix.m41 || 0),
-    y: Number(matrix.m42 || 0),
-  };
-}
-
-function getMatrixRotationDegrees(matrix) {
-  if (!matrix) {
-    return 0;
-  }
-
-  const angleRadians = Math.atan2(matrix.b || 0, matrix.a || 1);
-  return angleRadians * (180 / Math.PI);
-}
-
 function updateRangeVisual(rangeInput) {
   if (!(rangeInput instanceof HTMLInputElement) || rangeInput.type !== "range") {
     return;
@@ -792,12 +890,18 @@ function handleViewportResize() {
 
   viewportWidth = nextViewportWidth;
   viewportHeight = nextViewportHeight;
+  const countLimitAdjusted = syncResponsiveControlLimits();
+  resizeDuckCanvas();
   requestPanelHeightSync();
 
   // Mobile browsers frequently fire resize when their UI bars show or hide.
   // A full duck rerender there changes random sizes/positions even though the
   // user did not actually change the configuration.
   if (hasActiveSuperEvent() || !widthChanged) {
+    if (countLimitAdjusted) {
+      requestRender();
+    }
+
     return;
   }
 
@@ -1392,6 +1496,35 @@ function clearSuperEventsHoldTrigger() {
   }
 }
 
+function captureSecretTogglePointer(target, pointerId) {
+  if (!(target instanceof Element) || typeof target.setPointerCapture !== "function") {
+    return;
+  }
+
+  try {
+    target.setPointerCapture(pointerId);
+  } catch {
+    // Ignore browsers that reject capture for this interaction.
+  }
+}
+
+function releaseSecretTogglePointer(target, pointerId) {
+  if (
+    !(target instanceof Element) ||
+    typeof target.releasePointerCapture !== "function" ||
+    typeof target.hasPointerCapture !== "function" ||
+    !target.hasPointerCapture(pointerId)
+  ) {
+    return;
+  }
+
+  try {
+    target.releasePointerCapture(pointerId);
+  } catch {
+    // Ignore capture cleanup failures.
+  }
+}
+
 function resetAttentionTimerState() {
   attentionElapsedMs = 0;
   attentionActiveStartedAt = 0;
@@ -1639,198 +1772,6 @@ function initializeThemeColorSync() {
     });
   });
 }
-
-function requestRender() {
-  if (renderFrame) {
-    return;
-  }
-
-  renderFrame = window.requestAnimationFrame(() => {
-    renderFrame = 0;
-    renderDucks();
-  });
-}
-
-function setDuckPath(duck, leftPx, topPx, fallDistance, duration, delay = 0) {
-  duck.style.setProperty("--start-left", `${leftPx.toFixed(2)}px`);
-  duck.style.setProperty("--start-top", `${topPx.toFixed(2)}px`);
-  duck.style.setProperty("--duration", duration.toFixed(2));
-  duck.style.setProperty("--delay", delay.toFixed(2));
-  duck.style.setProperty("--fall-mid", `${(fallDistance * 0.52).toFixed(2)}px`);
-  duck.style.setProperty("--fall-end", `${fallDistance.toFixed(2)}px`);
-  duck.dataset.fallDistance = fallDistance.toFixed(2);
-  duck.dataset.duration = duration.toFixed(2);
-  duck.dataset.delay = delay.toFixed(2);
-}
-
-function restartDuckAnimation(duck) {
-  const nextAnimationName =
-    duck.dataset.animationName === "duck-fall-a" ? "duck-fall-b" : "duck-fall-a";
-
-  duck.dataset.animationName = nextAnimationName;
-  duck.dataset.animationStartedAt = performance.now().toFixed(3);
-  duck.dataset.animationPausedAt = "";
-  duck.style.animationName = nextAnimationName;
-}
-
-function applyDuckMotionProfile(duck, profile) {
-  const {
-    asset,
-    familyKey,
-    normalFamilyKey = familyKey,
-    logicalSize,
-    size,
-    duration,
-    driftBase,
-    mode = "normal",
-  } = profile;
-
-  if (duck.dataset.assetUrl !== asset.url) {
-    duck.src = asset.url;
-    duck.dataset.assetUrl = asset.url;
-  }
-
-  duck.dataset.familyKey = familyKey;
-  duck.dataset.normalFamilyKey = normalFamilyKey;
-  duck.dataset.logicalSize = logicalSize.toFixed(2);
-  duck.dataset.spawnMode = mode;
-  duck.dataset.assetWidth = String(asset.sourceWidth || FALLBACK_ASSET_SIZE);
-  duck.dataset.assetHeight = String(asset.sourceHeight || FALLBACK_ASSET_SIZE);
-  duck.style.setProperty("--size", size.toFixed(2));
-  duck.style.setProperty("--scale-start", "1");
-  duck.style.setProperty("--scale-mid", "1");
-  duck.style.setProperty("--scale-end", "1");
-
-  if (mode === "super-sign") {
-    duck.style.setProperty("--drift-start", "0px");
-    duck.style.setProperty("--drift-mid", "0px");
-    duck.style.setProperty("--drift-end", "0px");
-    duck.style.setProperty("--rotate-start", "0deg");
-    duck.style.setProperty("--rotate-mid", "0deg");
-    duck.style.setProperty("--rotate-end", "0deg");
-    duck.dataset.rotationDirection = "1";
-    return { size, duration };
-  }
-
-  const rotationProfile = createRotationProfile();
-
-  duck.style.setProperty(
-    "--drift-start",
-    `${randomSignedMagnitude(driftBase, state.driftVariance, 0, 420).toFixed(1)}px`
-  );
-  duck.style.setProperty(
-    "--drift-mid",
-    `${randomSignedMagnitude(driftBase * 1.2, state.driftVariance, 0, 520).toFixed(1)}px`
-  );
-  duck.style.setProperty(
-    "--drift-end",
-    `${randomSignedMagnitude(driftBase * 0.85, state.driftVariance, 0, 520).toFixed(1)}px`
-  );
-  duck.style.setProperty("--rotate-start", rotationProfile.start);
-  duck.style.setProperty("--rotate-mid", rotationProfile.mid);
-  duck.style.setProperty("--rotate-end", rotationProfile.end);
-  duck.dataset.rotationDirection = rotationProfile.direction;
-
-  return { size, duration };
-}
-
-function getStoredDuckFamilyKey(duck) {
-  return duck.dataset.familyKey || "duck";
-}
-
-function getStoredDuckNormalFamilyKey(duck) {
-  return duck.dataset.normalFamilyKey || getStoredDuckFamilyKey(duck);
-}
-
-function getStoredDuckSpawnMode(duck) {
-  return duck.dataset.spawnMode || "normal";
-}
-
-function getStoredDuckLogicalSize(duck) {
-  const logicalSize = Number(duck.dataset.logicalSize);
-  return Number.isFinite(logicalSize) ? logicalSize : state.size;
-}
-
-function getStoredDuckAsset(duck) {
-  const sourceWidth = Number(duck.dataset.assetWidth);
-  const sourceHeight = Number(duck.dataset.assetHeight);
-
-  return {
-    sourceWidth: Number.isFinite(sourceWidth) && sourceWidth > 0 ? sourceWidth : FALLBACK_ASSET_SIZE,
-    sourceHeight:
-      Number.isFinite(sourceHeight) && sourceHeight > 0 ? sourceHeight : FALLBACK_ASSET_SIZE,
-  };
-}
-
-function getCurrentDuckSize(duck) {
-  const size = Number.parseFloat(duck.style.getPropertyValue("--size"));
-  return Number.isFinite(size) && size > 0 ? size : getStoredDuckLogicalSize(duck);
-}
-
-function getDuckDisplayHeight(size, asset) {
-  const safeWidth = Math.max(asset.sourceWidth || 1, 1);
-  return size * ((asset.sourceHeight || safeWidth) / safeWidth);
-}
-
-function getDuckPositionFromCenter(center, size, asset, offsetX = 0, offsetY = 0) {
-  const height = getDuckDisplayHeight(size, asset);
-
-  return {
-    left: center.x - size / 2 - offsetX,
-    top: center.y - height / 2 - offsetY,
-  };
-}
-
-function getRemainingDistance(top, size, asset) {
-  const visibleDimension = Math.max(size, getDuckDisplayHeight(size, asset));
-  return Math.max(40, window.innerHeight + visibleDimension * 1.35 - top);
-}
-
-function getDurationFromRemainingDistance(duck, remainingDistance) {
-  const currentDuration = Number(duck.dataset.duration || 1);
-  const currentFallDistance = Number(duck.dataset.fallDistance || 1);
-
-  return Math.max(
-    0.6,
-    currentDuration * (remainingDistance / Math.max(currentFallDistance, 1))
-  );
-}
-
-function getMotionDurationFromRemainingDistance(duration, remainingDistance, size, asset) {
-  const fullFallDistance =
-    window.innerHeight + Math.max(size, getDuckDisplayHeight(size, asset)) * 2.8;
-
-  return Math.max(0.6, duration * (remainingDistance / Math.max(fullFallDistance, 1)));
-}
-
-function getDuckDriftStartOffset(duck) {
-  return Number.parseFloat(duck.style.getPropertyValue("--drift-start")) || 0;
-}
-
-function getDuckRotationDirection(duck) {
-  return duck.dataset.rotationDirection === "-1" ? -1 : 1;
-}
-
-function getDuckStartCoordinate(duck, variableName) {
-  return Number.parseFloat(duck.style.getPropertyValue(variableName)) || 0;
-}
-
-function getDuckAnimationProgress(duck, now = performance.now()) {
-  const duration = Number(duck.dataset.duration || 0);
-  const delay = Number(duck.dataset.delay || duck.style.getPropertyValue("--delay") || 0);
-  const startedAt = Number(duck.dataset.animationStartedAt || 0);
-
-  if (duration > 0 && startedAt > 0) {
-    return clamp((now - startedAt - delay * 1000) / (duration * 1000), 0, 0.999);
-  }
-
-  if (duration > 0 && delay < 0) {
-    return clamp((-delay) / duration, 0, 0.999);
-  }
-
-  return 0;
-}
-
 function createDurationProfile() {
   const effectiveSpeed = randomAround(state.speed, state.speedVariance, MIN_SPEED, MAX_SPEED);
   return speedValueToDuration(effectiveSpeed);
@@ -1858,292 +1799,39 @@ function applyDuckAssetVariant(
         };
   const asset = resolvedVariant.asset;
   const size = getDuckSizeForMode(logicalSize, asset, referenceFamilyKey, mode);
+  const displayHeight = getDuckDisplayHeight(size, asset);
 
-  if (duck.dataset.assetUrl !== asset.url) {
-    duck.src = asset.url;
-    duck.dataset.assetUrl = asset.url;
+  loadDuckAssetDimensions(asset);
+
+  if ("dataset" in duck) {
+    if (duck.dataset.assetUrl !== asset.url) {
+      duck.src = asset.url;
+      duck.dataset.assetUrl = asset.url;
+    }
+
+    duck.dataset.familyKey = resolvedVariant.familyKey;
+    duck.dataset.normalFamilyKey = referenceFamilyKey;
+    duck.dataset.logicalSize = logicalSize.toFixed(2);
+    duck.dataset.assetWidth = String(asset.sourceWidth || FALLBACK_ASSET_SIZE);
+    duck.dataset.assetHeight = String(asset.sourceHeight || FALLBACK_ASSET_SIZE);
+    duck.style.setProperty("--size", size.toFixed(2));
+    duck.style.setProperty("--display-height", displayHeight.toFixed(2));
+  } else {
+    duck.asset = asset;
+    duck.familyKey = resolvedVariant.familyKey;
+    duck.normalFamilyKey = referenceFamilyKey;
+    duck.logicalSize = logicalSize;
+    duck.assetWidth = asset.sourceWidth || FALLBACK_ASSET_SIZE;
+    duck.assetHeight = asset.sourceHeight || FALLBACK_ASSET_SIZE;
+    duck.size = size;
+    duck.displayHeight = displayHeight;
   }
-
-  duck.dataset.familyKey = resolvedVariant.familyKey;
-  duck.dataset.normalFamilyKey = referenceFamilyKey;
-  duck.dataset.logicalSize = logicalSize.toFixed(2);
-  duck.dataset.assetWidth = String(asset.sourceWidth || FALLBACK_ASSET_SIZE);
-  duck.dataset.assetHeight = String(asset.sourceHeight || FALLBACK_ASSET_SIZE);
-  duck.style.setProperty("--size", size.toFixed(2));
 
   return { asset, size };
 }
 
 function interpolateValue(from, to, progress) {
   return from + (to - from) * progress;
-}
-
-function getDuckCurrentTranslation(duck, progress = getDuckAnimationProgress(duck)) {
-  const driftStart = Number.parseFloat(duck.style.getPropertyValue("--drift-start")) || 0;
-  const driftMid = Number.parseFloat(duck.style.getPropertyValue("--drift-mid")) || 0;
-  const driftEnd = Number.parseFloat(duck.style.getPropertyValue("--drift-end")) || 0;
-  const fallMid = Number.parseFloat(duck.style.getPropertyValue("--fall-mid")) || 0;
-  const fallEnd = Number.parseFloat(duck.style.getPropertyValue("--fall-end")) || 0;
-
-  if (progress <= 0.5) {
-    const localProgress = progress / 0.5;
-
-    return {
-      x: interpolateValue(driftStart, driftMid, localProgress),
-      y: interpolateValue(0, fallMid, localProgress),
-    };
-  }
-
-  const localProgress = (progress - 0.5) / 0.5;
-
-  return {
-    x: interpolateValue(driftMid, driftEnd, localProgress),
-    y: interpolateValue(fallMid, fallEnd, localProgress),
-  };
-}
-
-function getDuckCurrentGeometry(duck, now = performance.now()) {
-  const progress = getDuckAnimationProgress(duck, now);
-  const startLeft = getDuckStartCoordinate(duck, "--start-left");
-  const startTop = getDuckStartCoordinate(duck, "--start-top");
-  const translation = getDuckCurrentTranslation(duck, progress);
-  const size = getCurrentDuckSize(duck);
-  const asset = getStoredDuckAsset(duck);
-  const left = startLeft + translation.x;
-  const top = startTop + translation.y;
-  const height = getDuckDisplayHeight(size, asset);
-
-  return {
-    progress,
-    size,
-    asset,
-    translation,
-    position: { left, top },
-    center: {
-      x: left + size / 2,
-      y: top + height / 2,
-    },
-  };
-}
-
-function refreshDuckAssetVariant(duck, assetSet = getActiveDuckAssetSet(), now = performance.now()) {
-  if (duck.classList.contains("is-dragged")) {
-    return;
-  }
-
-  const currentGeometry = getDuckCurrentGeometry(duck, now);
-  const familyKey = getStoredDuckFamilyKey(duck);
-  const normalFamilyKey = getStoredDuckNormalFamilyKey(duck);
-  const logicalSize = getStoredDuckLogicalSize(duck);
-  const spawnMode = getStoredDuckSpawnMode(duck);
-  const { asset, size } = applyDuckAssetVariant(
-    duck,
-    familyKey,
-    logicalSize,
-    spawnMode,
-    assetSet,
-    normalFamilyKey
-  );
-  const nextPosition = getDuckPositionFromCenter(
-    currentGeometry.center,
-    size,
-    asset,
-    currentGeometry.translation.x,
-    currentGeometry.translation.y
-  );
-
-  duck.style.setProperty("--start-left", `${nextPosition.left.toFixed(2)}px`);
-  duck.style.setProperty("--start-top", `${nextPosition.top.toFixed(2)}px`);
-}
-
-function refreshDuckMotion(duck, now = performance.now()) {
-  if (duck.classList.contains("is-dragged")) {
-    return;
-  }
-
-  const currentGeometry = getDuckCurrentGeometry(duck, now);
-  const profile = createDuckMotionProfile({
-    mode: getStoredDuckSpawnMode(duck),
-    familyKey: getStoredDuckFamilyKey(duck),
-    normalFamilyKey: getStoredDuckNormalFamilyKey(duck),
-    logicalSize: getStoredDuckLogicalSize(duck),
-  });
-  const { asset, size, duration } = profile;
-
-  applyDuckMotionProfile(duck, profile);
-
-  const nextPosition = getDuckPositionFromCenter(
-    currentGeometry.center,
-    size,
-    asset,
-    getDuckDriftStartOffset(duck),
-    0
-  );
-  const remainingDistance = getRemainingDistance(nextPosition.top, size, asset);
-  const nextDuration = getMotionDurationFromRemainingDistance(
-    duration,
-    remainingDistance,
-    size,
-    asset
-  );
-
-  setDuckPath(duck, nextPosition.left, nextPosition.top, remainingDistance, nextDuration);
-  restartDuckAnimation(duck);
-}
-
-function refreshDuckSpeed(duck, now = performance.now()) {
-  if (duck.classList.contains("is-dragged")) {
-    return;
-  }
-
-  const nextDuration =
-    getStoredDuckSpawnMode(duck) === "super-sign"
-      ? speedValueToDuration(SUPER_SIGN_DUCK_SPEED)
-      : createDurationProfile();
-  const progress = getDuckAnimationProgress(duck, now);
-  const startLeft = getDuckStartCoordinate(duck, "--start-left");
-  const startTop = getDuckStartCoordinate(duck, "--start-top");
-  const fallDistance = Number(duck.dataset.fallDistance || 0);
-
-  setDuckPath(duck, startLeft, startTop, fallDistance, nextDuration, -progress * nextDuration);
-  restartDuckAnimation(duck);
-}
-
-function refreshExistingDucks(updateType) {
-  const activeAssetSet = updateType === "asset" ? getActiveDuckAssetSet() : null;
-  const now = performance.now();
-
-  duckPool.forEach((duck) => {
-    if (updateType === "asset") {
-      refreshDuckAssetVariant(duck, activeAssetSet, now);
-      return;
-    }
-
-    if (updateType === "speed") {
-      refreshDuckSpeed(duck, now);
-      return;
-    }
-
-    refreshDuckMotion(duck, now);
-  });
-}
-
-function configureFreshDuckSpawn(duck, useEntryDelay = false) {
-  const profile = createDuckMotionProfile();
-  const { size, duration } = applyDuckMotionProfile(duck, profile);
-  const fallDistance = window.innerHeight + size * 2.8;
-  const minVisiblePart = size * 0.28;
-  const startLeft =
-    profile.mode === "super-sign"
-      ? 0
-      : randomBetween(-size + minVisiblePart, window.innerWidth - minVisiblePart);
-  const startTop = size * -1.45;
-  const entryDelay = useEntryDelay ? randomBetween(-duration, 0) : 0;
-
-  setDuckPath(duck, startLeft, startTop, fallDistance, duration, entryDelay);
-}
-
-function getFrozenDuckTransform(duck) {
-  const matrix = getTransformMatrix(duck);
-
-  if (!matrix) {
-    return "none";
-  }
-
-  if ("is2D" in matrix && matrix.is2D) {
-    return `matrix(${matrix.a}, ${matrix.b}, ${matrix.c}, ${matrix.d}, 0, 0)`;
-  }
-
-  matrix.m41 = 0;
-  matrix.m42 = 0;
-  matrix.m43 = 0;
-  return matrix.toString();
-}
-
-function getDraggedDuckTransform(frozenTransform) {
-  if (!frozenTransform || frozenTransform === "none") {
-    return `scale(${DRAG_SCALE})`;
-  }
-
-  return `${frozenTransform} scale(${DRAG_SCALE})`;
-}
-
-function returnDuckToRain(duck) {
-  if (duck.parentNode !== duckRain) {
-    duckRain.appendChild(duck);
-  }
-}
-
-function discardActiveDuckDrag() {
-  if (!activeDuckDrag) {
-    return;
-  }
-
-  const { duck, pointerId } = activeDuckDrag;
-
-  activeDuckDrag = null;
-  duck.classList.remove("is-dragged");
-  duck.style.zIndex = "";
-  duck.style.left = "";
-  duck.style.top = "";
-  duck.style.transform = "";
-  returnDuckToRain(duck);
-
-  if (typeof duck.hasPointerCapture === "function" && duck.hasPointerCapture(pointerId)) {
-    duck.releasePointerCapture(pointerId);
-  }
-}
-
-function releaseDuck(pointerId) {
-  if (!activeDuckDrag || activeDuckDrag.pointerId !== pointerId) {
-    return;
-  }
-
-  const { duck, lastX, lastY, size, currentRotation } = activeDuckDrag;
-  const spawnMode = getStoredDuckSpawnMode(duck);
-  const driftStart = spawnMode === "super-sign" ? 0 : getDuckDriftStartOffset(duck);
-  const remainingDistance = Math.max(40, window.innerHeight + size * 1.35 - lastY);
-  const currentDuration = Number(duck.dataset.duration || 1);
-  const currentFallDistance = Number(duck.dataset.fallDistance || 1);
-  const nextDuration = Math.max(
-    0.6,
-    currentDuration * (remainingDistance / Math.max(currentFallDistance, 1))
-  );
-
-  if (spawnMode === "super-sign") {
-    duck.style.setProperty("--drift-start", "0px");
-    duck.style.setProperty("--drift-mid", "0px");
-    duck.style.setProperty("--drift-end", "0px");
-    duck.style.setProperty("--rotate-start", "0deg");
-    duck.style.setProperty("--rotate-mid", "0deg");
-    duck.style.setProperty("--rotate-end", "0deg");
-    duck.dataset.rotationDirection = "1";
-  } else {
-    const rotationProfile = createRotationProfileFromAngle(
-      currentRotation,
-      getDuckRotationDirection(duck)
-    );
-
-    duck.style.setProperty("--rotate-start", rotationProfile.start);
-    duck.style.setProperty("--rotate-mid", rotationProfile.mid);
-    duck.style.setProperty("--rotate-end", rotationProfile.end);
-    duck.dataset.rotationDirection = rotationProfile.direction;
-  }
-
-  setDuckPath(duck, lastX - driftStart, lastY, remainingDistance, nextDuration);
-  duck.classList.remove("is-dragged");
-  returnDuckToRain(duck);
-  duck.style.zIndex = "";
-  duck.style.left = "";
-  duck.style.top = "";
-  duck.style.transform = "";
-  restartDuckAnimation(duck);
-
-  if (typeof duck.hasPointerCapture === "function" && duck.hasPointerCapture(pointerId)) {
-    duck.releasePointerCapture(pointerId);
-  }
-
-  activeDuckDrag = null;
 }
 
 function shouldHandleCardTouchScroll(target) {
@@ -2289,94 +1977,523 @@ function handleRangeTouchMove(event) {
   }
 }
 
-function attachDuckDragging(duck) {
-  duck.addEventListener("contextmenu", (event) => {
-    event.preventDefault();
-  });
+function resizeDuckCanvas() {
+  if (!(duckRain instanceof HTMLCanvasElement) || !duckContext) {
+    return;
+  }
 
-  duck.addEventListener("dragstart", (event) => {
-    event.preventDefault();
-  });
+  const nextWidth = Math.max(window.innerWidth, 1);
+  const nextHeight = Math.max(window.innerHeight, 1);
+  const nextRatio = Math.max(window.devicePixelRatio || 1, 1);
+  const pixelWidth = Math.max(1, Math.round(nextWidth * nextRatio));
+  const pixelHeight = Math.max(1, Math.round(nextHeight * nextRatio));
 
-  duck.addEventListener("animationend", () => {
-    if (duck.classList.contains("is-dragged")) {
-      return;
-    }
+  if (
+    duckCanvasWidth === nextWidth &&
+    duckCanvasHeight === nextHeight &&
+    duckDevicePixelRatio === nextRatio &&
+    duckRain.width === pixelWidth &&
+    duckRain.height === pixelHeight
+  ) {
+    return;
+  }
 
-    releaseSuperEventLockForDuck(duck);
-    configureFreshDuckSpawn(duck);
-    restartDuckAnimation(duck);
-  });
+  duckCanvasWidth = nextWidth;
+  duckCanvasHeight = nextHeight;
+  duckDevicePixelRatio = nextRatio;
+  duckRain.width = pixelWidth;
+  duckRain.height = pixelHeight;
+  duckRain.style.width = `${nextWidth}px`;
+  duckRain.style.height = `${nextHeight}px`;
+  duckContext.setTransform(nextRatio, 0, 0, nextRatio, 0, 0);
+  duckContext.imageSmoothingEnabled = true;
+  duckContext.imageSmoothingQuality = "high";
+}
 
-  duck.addEventListener("pointerdown", (event) => {
-    if (activeDuckDrag) {
-      return;
-    }
+function requestDuckFrame() {
+  if (duckRenderLoopFrame) {
+    return;
+  }
 
-    event.preventDefault();
+  duckRenderLoopFrame = window.requestAnimationFrame(drawDuckRainFrame);
+}
 
-    const rect = duck.getBoundingClientRect();
+function getDuckImageAsset(duck) {
+  return duck.asset || null;
+}
 
-    activeDuckDrag = {
-      duck,
-      pointerId: event.pointerId,
-      offsetX: event.clientX - rect.left,
-      offsetY: event.clientY - rect.top,
-      lastX: rect.left,
-      lastY: rect.top,
-      size: rect.width,
-      frozenTransform: getFrozenDuckTransform(duck),
-      currentRotation: getMatrixRotationDegrees(getTransformMatrix(duck)),
+function createCanvasDuck() {
+  duckIdCounter += 1;
+
+  return {
+    id: duckIdCounter,
+    asset: null,
+    familyKey: "duck",
+    normalFamilyKey: "duck",
+    logicalSize: state.size,
+    spawnMode: "normal",
+    assetWidth: FALLBACK_ASSET_SIZE,
+    assetHeight: FALLBACK_ASSET_SIZE,
+    size: state.size,
+    displayHeight: state.size,
+    duration: 1,
+    delay: 0,
+    fallDistance: 0,
+    startLeft: 0,
+    startTop: 0,
+    driftStart: 0,
+    driftMid: 0,
+    driftEnd: 0,
+    rotateStart: 0,
+    rotateMid: 0,
+    rotateEnd: 0,
+    rotationDirection: 1,
+    animationStartedAt: 0,
+    animationPausedAt: 0,
+    isDragged: false,
+    keepFrontUntilRespawn: false,
+    dragLeft: 0,
+    dragTop: 0,
+    currentRotation: 0,
+  };
+}
+
+function setDuckPath(duck, leftPx, topPx, fallDistance, duration, delay = 0) {
+  duck.startLeft = leftPx;
+  duck.startTop = topPx;
+  duck.duration = duration;
+  duck.delay = delay;
+  duck.fallDistance = fallDistance;
+}
+
+function restartDuckAnimation(duck, now = performance.now()) {
+  duck.animationStartedAt = now;
+  duck.animationPausedAt = 0;
+}
+
+function applyDuckMotionProfile(duck, profile) {
+  const {
+    asset,
+    familyKey,
+    normalFamilyKey = familyKey,
+    logicalSize,
+    size,
+    duration,
+    driftBase,
+    mode = "normal",
+  } = profile;
+  const displayHeight = getDuckDisplayHeight(size, asset);
+
+  duck.asset = asset;
+  duck.familyKey = familyKey;
+  duck.normalFamilyKey = normalFamilyKey;
+  duck.logicalSize = logicalSize;
+  duck.spawnMode = mode;
+  duck.assetWidth = asset.sourceWidth || FALLBACK_ASSET_SIZE;
+  duck.assetHeight = asset.sourceHeight || FALLBACK_ASSET_SIZE;
+  duck.size = size;
+  duck.displayHeight = displayHeight;
+
+  if (mode === "super-sign") {
+    duck.driftStart = 0;
+    duck.driftMid = 0;
+    duck.driftEnd = 0;
+    duck.rotateStart = 0;
+    duck.rotateMid = 0;
+    duck.rotateEnd = 0;
+    duck.rotationDirection = 1;
+    return { size, duration };
+  }
+
+  const rotationProfile = createRotationProfile();
+
+  duck.driftStart = randomSignedMagnitude(driftBase, state.driftVariance, 0, 420);
+  duck.driftMid = randomSignedMagnitude(driftBase * 1.2, state.driftVariance, 0, 520);
+  duck.driftEnd = randomSignedMagnitude(driftBase * 0.85, state.driftVariance, 0, 520);
+  duck.rotateStart = Number.parseFloat(rotationProfile.start) || 0;
+  duck.rotateMid = Number.parseFloat(rotationProfile.mid) || 0;
+  duck.rotateEnd = Number.parseFloat(rotationProfile.end) || 0;
+  duck.rotationDirection = rotationProfile.direction === "-1" ? -1 : 1;
+
+  return { size, duration };
+}
+
+function getStoredDuckFamilyKey(duck) {
+  return duck.familyKey || "duck";
+}
+
+function getStoredDuckNormalFamilyKey(duck) {
+  return duck.normalFamilyKey || getStoredDuckFamilyKey(duck);
+}
+
+function getStoredDuckSpawnMode(duck) {
+  return duck.spawnMode || "normal";
+}
+
+function getStoredDuckLogicalSize(duck) {
+  return Number.isFinite(duck.logicalSize) ? duck.logicalSize : state.size;
+}
+
+function getStoredDuckAsset(duck) {
+  const liveAsset = duck.asset;
+
+  if (liveAsset) {
+    return {
+      sourceWidth:
+        Number.isFinite(liveAsset.sourceWidth) && liveAsset.sourceWidth > 0
+          ? liveAsset.sourceWidth
+          : FALLBACK_ASSET_SIZE,
+      sourceHeight:
+        Number.isFinite(liveAsset.sourceHeight) && liveAsset.sourceHeight > 0
+          ? liveAsset.sourceHeight
+          : FALLBACK_ASSET_SIZE,
     };
+  }
 
-    duckDragLayer.appendChild(duck);
-    duck.style.left = `${rect.left.toFixed(2)}px`;
-    duck.style.top = `${rect.top.toFixed(2)}px`;
-    duck.style.zIndex = "1";
-    duck.style.transform = getDraggedDuckTransform(activeDuckDrag.frozenTransform);
-    duck.classList.add("is-dragged");
+  return {
+    sourceWidth: Number.isFinite(duck.assetWidth) && duck.assetWidth > 0 ? duck.assetWidth : FALLBACK_ASSET_SIZE,
+    sourceHeight:
+      Number.isFinite(duck.assetHeight) && duck.assetHeight > 0 ? duck.assetHeight : FALLBACK_ASSET_SIZE,
+  };
+}
 
-    if (typeof duck.setPointerCapture === "function") {
-      duck.setPointerCapture(event.pointerId);
-    }
+function getCurrentDuckSize(duck) {
+  return Number.isFinite(duck.size) && duck.size > 0 ? duck.size : getStoredDuckLogicalSize(duck);
+}
+
+function getDuckDisplayHeight(size, asset) {
+  const safeWidth = Math.max(asset.sourceWidth || 1, 1);
+  return size * ((asset.sourceHeight || safeWidth) / safeWidth);
+}
+
+function getDuckPositionFromCenter(center, size, asset, offsetX = 0, offsetY = 0) {
+  const height = getDuckDisplayHeight(size, asset);
+
+  return {
+    left: center.x - size / 2 - offsetX,
+    top: center.y - height / 2 - offsetY,
+  };
+}
+
+function getRemainingDistance(top, size, asset) {
+  const visibleDimension = Math.max(size, getDuckDisplayHeight(size, asset));
+  return Math.max(40, window.innerHeight + visibleDimension * 1.35 - top);
+}
+
+function getDurationFromRemainingDistance(duck, remainingDistance) {
+  const currentDuration = Number(duck.duration || 1);
+  const currentFallDistance = Number(duck.fallDistance || 1);
+
+  return Math.max(0.6, currentDuration * (remainingDistance / Math.max(currentFallDistance, 1)));
+}
+
+function getMotionDurationFromRemainingDistance(duration, remainingDistance, size, asset) {
+  const fullFallDistance =
+    window.innerHeight + Math.max(size, getDuckDisplayHeight(size, asset)) * 2.8;
+
+  return Math.max(0.6, duration * (remainingDistance / Math.max(fullFallDistance, 1)));
+}
+
+function getDuckDriftStartOffset(duck) {
+  return Number.isFinite(duck.driftStart) ? duck.driftStart : 0;
+}
+
+function getDuckRotationDirection(duck) {
+  return duck.rotationDirection === -1 ? -1 : 1;
+}
+
+function getDuckStartCoordinate(duck, variableName) {
+  if (variableName === "--start-left") {
+    return duck.startLeft || 0;
+  }
+
+  if (variableName === "--start-top") {
+    return duck.startTop || 0;
+  }
+
+  return 0;
+}
+
+function getDuckAnimationProgress(duck, now = performance.now()) {
+  const duration = Number(duck.duration || 0);
+  const delay = Number(duck.delay || 0);
+  const startedAt = Number(duck.animationStartedAt || 0);
+  const effectiveNow = duck.animationPausedAt || now;
+
+  if (duration > 0 && startedAt > 0) {
+    return clamp((effectiveNow - startedAt - delay * 1000) / (duration * 1000), 0, 0.999);
+  }
+
+  if (duration > 0 && delay < 0) {
+    return clamp((-delay) / duration, 0, 0.999);
+  }
+
+  return 0;
+}
+
+function getDuckCurrentTranslation(duck, progress = getDuckAnimationProgress(duck)) {
+  const driftStart = duck.driftStart || 0;
+  const driftMid = duck.driftMid || 0;
+  const driftEnd = duck.driftEnd || 0;
+  const fallMid = (duck.fallDistance || 0) * 0.52;
+  const fallEnd = duck.fallDistance || 0;
+
+  if (progress <= 0.5) {
+    const localProgress = progress / 0.5;
+
+    return {
+      x: interpolateValue(driftStart, driftMid, localProgress),
+      y: interpolateValue(0, fallMid, localProgress),
+    };
+  }
+
+  const localProgress = (progress - 0.5) / 0.5;
+
+  return {
+    x: interpolateValue(driftMid, driftEnd, localProgress),
+    y: interpolateValue(fallMid, fallEnd, localProgress),
+  };
+}
+
+function getDuckCurrentRotation(duck, progress = getDuckAnimationProgress(duck)) {
+  if (progress <= 0.5) {
+    return interpolateValue(duck.rotateStart || 0, duck.rotateMid || 0, progress / 0.5);
+  }
+
+  return interpolateValue(duck.rotateMid || 0, duck.rotateEnd || 0, (progress - 0.5) / 0.5);
+}
+
+function getDuckCurrentGeometry(duck, now = performance.now()) {
+  const progress = getDuckAnimationProgress(duck, now);
+  const translation = getDuckCurrentTranslation(duck, progress);
+  const size = getCurrentDuckSize(duck);
+  const asset = getStoredDuckAsset(duck);
+  const left = (duck.startLeft || 0) + translation.x;
+  const top = (duck.startTop || 0) + translation.y;
+  const height = getDuckDisplayHeight(size, asset);
+  const rotation = getDuckCurrentRotation(duck, progress);
+
+  return {
+    progress,
+    size,
+    asset,
+    rotation,
+    translation,
+    position: { left, top },
+    center: {
+      x: left + size / 2,
+      y: top + height / 2,
+    },
+  };
+}
+
+function getDuckVisualState(duck, now = performance.now()) {
+  if (duck.isDragged) {
+    const scaledSize = duck.size * DRAG_SCALE;
+    const scaledHeight = duck.displayHeight * DRAG_SCALE;
+    const offsetX = (scaledSize - duck.size) / 2;
+    const offsetY = (scaledHeight - duck.displayHeight) / 2;
+
+    return {
+      left: duck.dragLeft - offsetX,
+      top: duck.dragTop - offsetY,
+      size: scaledSize,
+      displayHeight: scaledHeight,
+      rotation: duck.currentRotation,
+    };
+  }
+
+  const geometry = getDuckCurrentGeometry(duck, now);
+
+  return {
+    left: geometry.position.left,
+    top: geometry.position.top,
+    size: geometry.size,
+    displayHeight: getDuckDisplayHeight(geometry.size, geometry.asset),
+    rotation: geometry.rotation,
+  };
+}
+
+function refreshDuckAssetVariant(duck, assetSet = getActiveDuckAssetSet(), now = performance.now()) {
+  if (duck.isDragged) {
+    return;
+  }
+
+  const currentGeometry = getDuckCurrentGeometry(duck, now);
+  const familyKey = getStoredDuckFamilyKey(duck);
+  const normalFamilyKey = getStoredDuckNormalFamilyKey(duck);
+  const logicalSize = getStoredDuckLogicalSize(duck);
+  const spawnMode = getStoredDuckSpawnMode(duck);
+  const { asset, size } = applyDuckAssetVariant(
+    duck,
+    familyKey,
+    logicalSize,
+    spawnMode,
+    assetSet,
+    normalFamilyKey
+  );
+  const nextPosition = getDuckPositionFromCenter(
+    currentGeometry.center,
+    size,
+    asset,
+    currentGeometry.translation.x,
+    currentGeometry.translation.y
+  );
+
+  duck.startLeft = nextPosition.left;
+  duck.startTop = nextPosition.top;
+}
+
+function refreshDuckMotion(duck, now = performance.now()) {
+  if (duck.isDragged) {
+    return;
+  }
+
+  const currentGeometry = getDuckCurrentGeometry(duck, now);
+  const profile = createDuckMotionProfile({
+    mode: getStoredDuckSpawnMode(duck),
+    familyKey: getStoredDuckFamilyKey(duck),
+    normalFamilyKey: getStoredDuckNormalFamilyKey(duck),
+    logicalSize: getStoredDuckLogicalSize(duck),
   });
+  const { asset, size, duration } = profile;
 
-  duck.addEventListener("pointermove", (event) => {
-    if (!activeDuckDrag || activeDuckDrag.pointerId !== event.pointerId) {
+  applyDuckMotionProfile(duck, profile);
+
+  const nextPosition = getDuckPositionFromCenter(
+    currentGeometry.center,
+    size,
+    asset,
+    getDuckDriftStartOffset(duck),
+    0
+  );
+  const remainingDistance = getRemainingDistance(nextPosition.top, size, asset);
+  const nextDuration = getMotionDurationFromRemainingDistance(
+    duration,
+    remainingDistance,
+    size,
+    asset
+  );
+
+  setDuckPath(duck, nextPosition.left, nextPosition.top, remainingDistance, nextDuration);
+  restartDuckAnimation(duck, now);
+}
+
+function refreshDuckSpeed(duck, now = performance.now()) {
+  if (duck.isDragged) {
+    return;
+  }
+
+  const nextDuration =
+    getStoredDuckSpawnMode(duck) === "super-sign"
+      ? speedValueToDuration(SUPER_SIGN_DUCK_SPEED)
+      : createDurationProfile();
+  const progress = getDuckAnimationProgress(duck, now);
+
+  setDuckPath(
+    duck,
+    duck.startLeft || 0,
+    duck.startTop || 0,
+    Number(duck.fallDistance || 0),
+    nextDuration,
+    -progress * nextDuration
+  );
+  restartDuckAnimation(duck, now);
+}
+
+function refreshExistingDucks(updateType) {
+  const activeAssetSet = updateType === "asset" ? getActiveDuckAssetSet() : null;
+  const now = performance.now();
+
+  duckPool.forEach((duck) => {
+    if (updateType === "asset") {
+      refreshDuckAssetVariant(duck, activeAssetSet, now);
       return;
     }
 
-    const nextLeft = event.clientX - activeDuckDrag.offsetX;
-    const nextTop = event.clientY - activeDuckDrag.offsetY;
+    if (updateType === "speed") {
+      refreshDuckSpeed(duck, now);
+      return;
+    }
 
-    activeDuckDrag.lastX = nextLeft;
-    activeDuckDrag.lastY = nextTop;
-
-    duck.style.left = `${nextLeft.toFixed(2)}px`;
-    duck.style.top = `${nextTop.toFixed(2)}px`;
+    refreshDuckMotion(duck, now);
   });
 
-  duck.addEventListener("pointerup", (event) => {
-    releaseDuck(event.pointerId);
-  });
+  requestDuckFrame();
+}
 
-  duck.addEventListener("pointercancel", (event) => {
-    releaseDuck(event.pointerId);
-  });
+function configureFreshDuckSpawn(duck, useEntryDelay = false) {
+  const profile = createDuckMotionProfile();
+  const { size, duration } = applyDuckMotionProfile(duck, profile);
+  const fallDistance = window.innerHeight + size * 2.8;
+  const minVisiblePart = size * 0.28;
+  const startLeft =
+    profile.mode === "super-sign"
+      ? 0
+      : randomBetween(-size + minVisiblePart, window.innerWidth - minVisiblePart);
+  const startTop = size * -1.45;
+  const entryDelay = useEntryDelay ? randomBetween(-duration, 0) : 0;
+
+  duck.keepFrontUntilRespawn = false;
+  setDuckPath(duck, startLeft, startTop, fallDistance, duration, entryDelay);
+}
+
+function discardActiveDuckDrag() {
+  if (!activeDuckDrag) {
+    return;
+  }
+
+  activeDuckDrag.duck.isDragged = false;
+  activeDuckDrag = null;
+}
+
+function releaseDuck(pointerId) {
+  if (!activeDuckDrag || activeDuckDrag.pointerId !== pointerId) {
+    return;
+  }
+
+  const { duck, lastX, lastY, size, displayHeight, currentRotation } = activeDuckDrag;
+  const spawnMode = getStoredDuckSpawnMode(duck);
+  const driftStart = spawnMode === "super-sign" ? 0 : getDuckDriftStartOffset(duck);
+  const remainingDistance = Math.max(
+    40,
+    window.innerHeight + Math.max(size, displayHeight) * 1.35 - lastY
+  );
+  const nextDuration = getDurationFromRemainingDistance(duck, remainingDistance);
+
+  if (spawnMode === "super-sign") {
+    duck.driftStart = 0;
+    duck.driftMid = 0;
+    duck.driftEnd = 0;
+    duck.rotateStart = 0;
+    duck.rotateMid = 0;
+    duck.rotateEnd = 0;
+    duck.rotationDirection = 1;
+  } else {
+    const rotationProfile = createRotationProfileFromAngle(
+      currentRotation,
+      getDuckRotationDirection(duck)
+    );
+
+    duck.rotateStart = Number.parseFloat(rotationProfile.start) || 0;
+    duck.rotateMid = Number.parseFloat(rotationProfile.mid) || 0;
+    duck.rotateEnd = Number.parseFloat(rotationProfile.end) || 0;
+    duck.rotationDirection = rotationProfile.direction === "-1" ? -1 : 1;
+  }
+
+  setDuckPath(duck, lastX - driftStart, lastY, remainingDistance, nextDuration);
+  duck.isDragged = false;
+  duck.keepFrontUntilRespawn = true;
+  moveDuckToFront(duck);
+  duck.dragLeft = 0;
+  duck.dragTop = 0;
+  duck.currentRotation = 0;
+  restartDuckAnimation(duck);
+  activeDuckDrag = null;
 }
 
 function createDuck() {
-  const duck = document.createElement("img");
-
-  duck.className = "duck";
-  duck.src = getActiveDuckAssetSet().base.url;
-  duck.alt = "";
-  duck.decoding = "async";
-  duck.draggable = false;
-
-  attachDuckDragging(duck);
-
-  return duck;
+  return createCanvasDuck();
 }
 
 function syncDuckPool(activeCount) {
@@ -2387,41 +2504,317 @@ function syncDuckPool(activeCount) {
   while (duckPool.length > activeCount) {
     const duck = duckPool.pop();
 
-    if (duck) {
-      releaseSuperEventLockForDuck(duck);
-      duck.remove();
+    if (!duck) {
+      continue;
     }
-  }
 
-  const fragment = document.createDocumentFragment();
-
-  duckPool.forEach((duck) => {
-    if (duck.parentNode !== duckRain) {
-      fragment.appendChild(duck);
+    if (activeDuckDrag?.duck === duck) {
+      activeDuckDrag = null;
     }
-  });
 
-  if (fragment.childNodes.length) {
-    duckRain.appendChild(fragment);
+    releaseSuperEventLockForDuck(duck);
   }
 }
 
 function renderDucks() {
   discardActiveDuckDrag();
+
+  const activeCount = clamp(Math.round(state.count), 1, getManualCountMax());
+  syncDuckPool(activeCount);
+
   superSignDuckActive = false;
 
-  if (duckDragLayer.firstChild) {
-    duckDragLayer.replaceChildren();
-  }
-
-  const activeCount = clamp(Math.round(state.count), 1, 400);
-
-  syncDuckPool(activeCount);
+  const now = performance.now();
 
   duckPool.forEach((duck) => {
     configureFreshDuckSpawn(duck, true);
-    restartDuckAnimation(duck);
+    restartDuckAnimation(duck, now);
   });
+
+  requestDuckFrame();
+}
+
+function pauseDuckAnimationClocks() {
+  const pausedAt = performance.now();
+
+  duckPool.forEach((duck) => {
+    if (duck.isDragged || duck.animationPausedAt) {
+      return;
+    }
+
+    duck.animationPausedAt = pausedAt;
+  });
+}
+
+function resumeDuckAnimationClocks() {
+  const resumedAt = performance.now();
+
+  duckPool.forEach((duck) => {
+    const pausedAt = Number(duck.animationPausedAt || 0);
+
+    if (!pausedAt) {
+      return;
+    }
+
+    const startedAt = Number(duck.animationStartedAt || 0);
+
+    if (startedAt > 0) {
+      duck.animationStartedAt = startedAt + resumedAt - pausedAt;
+    }
+
+    duck.animationPausedAt = 0;
+  });
+
+  requestDuckFrame();
+}
+
+function isDuckPointHit(duck, x, y, now = performance.now()) {
+  const visual = getDuckVisualState(duck, now);
+  const centerX = visual.left + visual.size / 2;
+  const centerY = visual.top + visual.displayHeight / 2;
+  const radians = (-visual.rotation * Math.PI) / 180;
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+  const localX = x - centerX;
+  const localY = y - centerY;
+  const rotatedX = localX * cos - localY * sin;
+  const rotatedY = localX * sin + localY * cos;
+
+  return (
+    Math.abs(rotatedX) <= visual.size / 2 &&
+    Math.abs(rotatedY) <= visual.displayHeight / 2
+  );
+}
+
+function findDuckAtPoint(x, y, now = performance.now()) {
+  if (activeDuckDrag?.duck && isDuckPointHit(activeDuckDrag.duck, x, y, now)) {
+    return activeDuckDrag.duck;
+  }
+
+  for (let index = duckPool.length - 1; index >= 0; index -= 1) {
+    const duck = duckPool[index];
+
+    if (duck.isDragged || !duck.keepFrontUntilRespawn) {
+      continue;
+    }
+
+    if (isDuckPointHit(duck, x, y, now)) {
+      return duck;
+    }
+  }
+
+  for (let index = duckPool.length - 1; index >= 0; index -= 1) {
+    const duck = duckPool[index];
+
+    if (duck.isDragged || duck.keepFrontUntilRespawn) {
+      continue;
+    }
+
+    if (isDuckPointHit(duck, x, y, now)) {
+      return duck;
+    }
+  }
+
+  return null;
+}
+
+function moveDuckToFront(duck) {
+  const duckIndex = duckPool.indexOf(duck);
+
+  if (duckIndex === -1 || duckIndex === duckPool.length - 1) {
+    return;
+  }
+
+  duckPool.splice(duckIndex, 1);
+  duckPool.push(duck);
+}
+
+function getCanvasPointerPosition(event) {
+  const rect = duckRain.getBoundingClientRect();
+
+  return {
+    x: event.clientX - rect.left,
+    y: event.clientY - rect.top,
+  };
+}
+
+function handleDuckCanvasPointerDown(event) {
+  if (!(duckRain instanceof HTMLCanvasElement) || !duckContext) {
+    return;
+  }
+
+  if ((event.pointerType === "mouse" && event.button !== 0) || activeDuckDrag) {
+    return;
+  }
+
+  const pointer = getCanvasPointerPosition(event);
+  const targetDuck = findDuckAtPoint(pointer.x, pointer.y);
+
+  if (!targetDuck) {
+    return;
+  }
+
+  event.preventDefault();
+
+  const visual = getDuckVisualState(targetDuck, performance.now());
+
+  targetDuck.keepFrontUntilRespawn = true;
+  moveDuckToFront(targetDuck);
+
+  activeDuckDrag = {
+    duck: targetDuck,
+    pointerId: event.pointerId,
+    offsetX: pointer.x - visual.left,
+    offsetY: pointer.y - visual.top,
+    lastX: visual.left,
+    lastY: visual.top,
+    size: targetDuck.size,
+    displayHeight: targetDuck.displayHeight,
+    currentRotation: visual.rotation,
+  };
+
+  targetDuck.isDragged = true;
+  targetDuck.dragLeft = visual.left;
+  targetDuck.dragTop = visual.top;
+  targetDuck.currentRotation = visual.rotation;
+
+  if (typeof duckRain.setPointerCapture === "function") {
+    duckRain.setPointerCapture(event.pointerId);
+  }
+
+  requestDuckFrame();
+}
+
+function handleDuckCanvasPointerMove(event) {
+  if (!activeDuckDrag || activeDuckDrag.pointerId !== event.pointerId) {
+    return;
+  }
+
+  const pointer = getCanvasPointerPosition(event);
+  const nextLeft = pointer.x - activeDuckDrag.offsetX;
+  const nextTop = pointer.y - activeDuckDrag.offsetY;
+
+  activeDuckDrag.lastX = nextLeft;
+  activeDuckDrag.lastY = nextTop;
+  activeDuckDrag.duck.dragLeft = nextLeft;
+  activeDuckDrag.duck.dragTop = nextTop;
+
+  requestDuckFrame();
+}
+
+function handleDuckCanvasPointerUp(event) {
+  releaseDuck(event.pointerId);
+
+  if (
+    typeof duckRain.releasePointerCapture === "function" &&
+    duckRain.hasPointerCapture?.(event.pointerId)
+  ) {
+    duckRain.releasePointerCapture(event.pointerId);
+  }
+}
+
+function drawDuckToCanvas(duck, now = performance.now()) {
+  if (!duckContext) {
+    return;
+  }
+
+  const asset = getDuckImageAsset(duck);
+
+  if (!asset?.image) {
+    return;
+  }
+
+  const visual = getDuckVisualState(duck, now);
+  const centerX = visual.left + visual.size / 2;
+  const centerY = visual.top + visual.displayHeight / 2;
+
+  duckContext.save();
+  duckContext.translate(centerX, centerY);
+  duckContext.rotate((visual.rotation * Math.PI) / 180);
+  duckContext.drawImage(
+    asset.image,
+    -visual.size / 2,
+    -visual.displayHeight / 2,
+    visual.size,
+    visual.displayHeight
+  );
+  duckContext.restore();
+}
+
+function updateDuckForFrame(duck, now = performance.now()) {
+  if (duck.isDragged) {
+    return;
+  }
+
+  if (getDuckAnimationProgress(duck, now) < 0.999) {
+    return;
+  }
+
+  releaseSuperEventLockForDuck(duck);
+  configureFreshDuckSpawn(duck);
+  restartDuckAnimation(duck, now);
+}
+
+function drawDuckRainFrame(now = performance.now()) {
+  duckRenderLoopFrame = 0;
+  resizeDuckCanvas();
+
+  if (!duckContext) {
+    return;
+  }
+
+  duckContext.clearRect(0, 0, duckCanvasWidth, duckCanvasHeight);
+
+  duckPool.forEach((duck) => {
+    updateDuckForFrame(duck, now);
+
+    if (!duck.isDragged && !duck.keepFrontUntilRespawn) {
+      drawDuckToCanvas(duck, now);
+    }
+  });
+
+  duckPool.forEach((duck) => {
+    if (!duck.isDragged && duck.keepFrontUntilRespawn) {
+      drawDuckToCanvas(duck, now);
+    }
+  });
+
+  if (activeDuckDrag?.duck) {
+    drawDuckToCanvas(activeDuckDrag.duck, now);
+  }
+
+  requestDuckFrame();
+}
+
+function requestRender() {
+  if (renderFrame) {
+    return;
+  }
+
+  renderFrame = window.requestAnimationFrame(() => {
+    renderFrame = 0;
+    renderDucks();
+  });
+}
+
+function initializeDuckCanvas() {
+  if (!(duckRain instanceof HTMLCanvasElement) || !duckContext) {
+    return;
+  }
+
+  resizeDuckCanvas();
+  duckRain.addEventListener("pointerdown", handleDuckCanvasPointerDown);
+  duckRain.addEventListener("pointermove", handleDuckCanvasPointerMove);
+  duckRain.addEventListener("pointerup", handleDuckCanvasPointerUp);
+  duckRain.addEventListener("pointercancel", handleDuckCanvasPointerUp);
+  duckRain.addEventListener("lostpointercapture", (event) => {
+    if (!activeDuckDrag) {
+      return;
+    }
+
+    releaseDuck(event.pointerId);
+  });
+  requestDuckFrame();
 }
 
 function isSpeedKey(key) {
@@ -2523,6 +2916,29 @@ glassCard.addEventListener("touchmove", handleCardTouchMove, { passive: false })
 glassCard.addEventListener("touchend", clearCardTouchScroll, { passive: true });
 glassCard.addEventListener("touchcancel", clearCardTouchScroll, { passive: true });
 
+[
+  guardianEventDuck,
+  visionEventDuck,
+  paintingEventPulloverDuck,
+  paintingEventTshirtDuck,
+].forEach(protectDuckImage);
+
+document.addEventListener("contextmenu", (event) => {
+  if (!isProtectedDuckImageTarget(event.target)) {
+    return;
+  }
+
+  event.preventDefault();
+});
+
+document.addEventListener("dragstart", (event) => {
+  if (!isProtectedDuckImageTarget(event.target)) {
+    return;
+  }
+
+  event.preventDefault();
+});
+
 window.addEventListener("resize", handleViewportResize, { passive: true });
 window.addEventListener("focus", syncAttentionTimer);
 window.addEventListener("blur", syncAttentionTimer);
@@ -2530,12 +2946,16 @@ window.addEventListener("blur", clearRangeTouchScroll);
 window.addEventListener("pageshow", () => {
   viewportWidth = window.innerWidth;
   viewportHeight = window.innerHeight;
+  syncResponsiveControlLimits();
+  resizeDuckCanvas();
   setPanelExpanded(true);
   resetToDefaults();
   resumeDuckAnimationClocks();
+  requestDuckFrame();
   syncAttentionTimer();
 });
 window.addEventListener("pagehide", () => {
+  discardActiveDuckDrag();
   pauseDuckAnimationClocks();
   pauseAttentionTimer();
 });
@@ -2597,19 +3017,34 @@ specialDucksToggleRow.addEventListener("pointerdown", (event) => {
     return;
   }
 
+  captureSecretTogglePointer(event.currentTarget, event.pointerId);
   specialDucksHoldTimeoutId = window.setTimeout(() => {
     specialDucksHoldTimeoutId = 0;
-    specialDucksOnlyMode = !specialDucksOnlyMode;
     suppressSpecialDucksToggleClick = true;
+
+    if (specialDucksOnlyMode) {
+      specialDucksOnlyMode = false;
+      triggerSecretSpecialDucksVibration();
+      return;
+    }
+
+    void preloadActiveSpecialDuckAssets().then(() => {
+      if (areSpecialDucksEnabled()) {
+        specialDucksOnlyMode = true;
+        triggerSecretSpecialDucksVibration();
+      }
+    });
   }, SUPER_EVENTS_HOLD_TRIGGER_MS);
 });
 
-specialDucksToggleRow.addEventListener("pointerup", () => {
+specialDucksToggleRow.addEventListener("pointerup", (event) => {
   clearSpecialDucksHoldTrigger();
+  releaseSecretTogglePointer(event.currentTarget, event.pointerId);
 });
 
-specialDucksToggleRow.addEventListener("pointercancel", () => {
+specialDucksToggleRow.addEventListener("pointercancel", (event) => {
   clearSpecialDucksHoldTrigger();
+  releaseSecretTogglePointer(event.currentTarget, event.pointerId);
 });
 
 specialDucksToggleRow.addEventListener("lostpointercapture", () => {
@@ -2626,26 +3061,40 @@ specialDucksToggleRow.addEventListener("click", (event) => {
   event.stopPropagation();
 });
 
+specialDucksToggle.addEventListener("click", (event) => {
+  if (!suppressSpecialDucksToggleClick) {
+    return;
+  }
+
+  suppressSpecialDucksToggleClick = false;
+  event.preventDefault();
+  event.stopPropagation();
+});
+
 superEventsToggleRow.addEventListener("pointerdown", (event) => {
   if ((event.pointerType === "mouse" && event.button !== 0) || superEventsHoldTimeoutId) {
     return;
   }
 
+  captureSecretTogglePointer(event.currentTarget, event.pointerId);
   superEventsHoldTimeoutId = window.setTimeout(() => {
     superEventsHoldTimeoutId = 0;
+    suppressSuperEventsToggleClick = true;
 
-    if (triggerForcedRandomSuperEvent()) {
-      suppressSuperEventsToggleClick = true;
+    if (!triggerForcedRandomSuperEvent()) {
+      suppressSuperEventsToggleClick = false;
     }
   }, SUPER_EVENTS_HOLD_TRIGGER_MS);
 });
 
-superEventsToggleRow.addEventListener("pointerup", () => {
+superEventsToggleRow.addEventListener("pointerup", (event) => {
   clearSuperEventsHoldTrigger();
+  releaseSecretTogglePointer(event.currentTarget, event.pointerId);
 });
 
-superEventsToggleRow.addEventListener("pointercancel", () => {
+superEventsToggleRow.addEventListener("pointercancel", (event) => {
   clearSuperEventsHoldTrigger();
+  releaseSecretTogglePointer(event.currentTarget, event.pointerId);
 });
 
 superEventsToggleRow.addEventListener("lostpointercapture", () => {
@@ -2653,6 +3102,16 @@ superEventsToggleRow.addEventListener("lostpointercapture", () => {
 });
 
 superEventsToggleRow.addEventListener("click", (event) => {
+  if (!suppressSuperEventsToggleClick) {
+    return;
+  }
+
+  suppressSuperEventsToggleClick = false;
+  event.preventDefault();
+  event.stopPropagation();
+});
+
+superEventsToggle.addEventListener("click", (event) => {
   if (!suppressSuperEventsToggleClick) {
     return;
   }
@@ -2692,6 +3151,8 @@ setInfoPopupOpen(false);
 setAttentionPopupOpen(false);
 syncSpecialEventAssets();
 initializeThemeColorSync();
+initializeDuckCanvas();
+syncResponsiveControlLimits();
 resetVisionEventScene();
 setVisionEventVisible(false);
 resetPaintingEventScene();

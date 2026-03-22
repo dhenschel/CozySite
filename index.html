@@ -7,7 +7,7 @@
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
     <meta name="theme-color" content="rgb(186, 233, 255)" />
-    <meta name="app-version" content="2026.03.22-6" />
+    <meta name="app-version" content="2026.03.22-7" />
     <title>CozySite</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -15,9 +15,9 @@
       rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@400;600;700;800&display=swap"
     />
-    <link rel="manifest" href="manifest.webmanifest?v=2026.03.22-6" />
-    <link rel="stylesheet" href="style.css?v=2026.03.22-6" />
-    <script src="script.js?v=2026.03.22-6" defer></script>
+    <link rel="manifest" href="manifest.webmanifest?v=2026.03.22-7" />
+    <link rel="stylesheet" href="style.css?v=2026.03.22-7" />
+    <script src="script.js?v=2026.03.22-7" defer></script>
   </head>
   <body>
     <button
@@ -63,8 +63,7 @@
       <p>Inspiriert von einer sehr wichtigen Leuchte-Ente. Der Rest ist eskaliert.</p>
     </div>
     <div class="glass-blur-sentinel" aria-hidden="true"></div>
-    <div class="duck-rain" id="duckRain" aria-hidden="true"></div>
-    <div class="duck-drag-layer" id="duckDragLayer" aria-hidden="true"></div>
+    <canvas class="duck-rain" id="duckRain" aria-hidden="true"></canvas>
     <main class="page-shell">
       <div class="panel-stack">
         <section class="glass-card" id="glassCard">
@@ -88,7 +87,7 @@
                   name="countNumber"
                   type="number"
                   min="1"
-                  max="400"
+                  max="1000"
                   step="1"
                   value="15"
                   data-setting="count"
@@ -354,7 +353,7 @@
         <img
           class="guardian-event__duck"
           id="guardianEventDuck"
-          src="images/ducks/glowing_vesion/real_duck_glow.png?v=2026.03.22-3"
+          src="images/ducks/glowing_vesion/real_duck_glow.png?v=2026.03.22-7"
           alt=""
         />
         <div class="guardian-event__bubble" id="guardianEventBubble">
