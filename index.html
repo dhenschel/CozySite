@@ -6,10 +6,16 @@
     <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
-    <meta name="app-version" content="2026.03.22-2" />
+    <meta name="app-version" content="2026.03.22-3" />
     <title>CozySite</title>
-    <link rel="stylesheet" href="style.css?v=2026.03.22-2" />
-    <script src="script.js?v=2026.03.22-2" defer></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@400;600;700;800&display=swap"
+    />
+    <link rel="stylesheet" href="style.css?v=2026.03.22-3" />
+    <script src="script.js?v=2026.03.22-3" defer></script>
   </head>
   <body>
     <button
@@ -328,8 +334,14 @@
       <img class="painting-event__roller" id="paintingEventRoller" src="" alt="" />
       <div class="painting-event__scene">
         <div class="painting-event__duck-pair" id="paintingEventDuckPair">
-          <img class="painting-event__duck" id="paintingEventTshirtDuck" src="" alt="" />
-          <img class="painting-event__duck" id="paintingEventPulloverDuck" src="" alt="" />
+          <div class="painting-event__duck-slot painting-event__duck-slot--tshirt">
+            <div class="painting-event__bubble painting-event__bubble--tshirt">Schwein!</div>
+            <img class="painting-event__duck" id="paintingEventTshirtDuck" src="" alt="" />
+          </div>
+          <div class="painting-event__duck-slot painting-event__duck-slot--pullover">
+            <div class="painting-event__bubble painting-event__bubble--pullover">Katze!</div>
+            <img class="painting-event__duck" id="paintingEventPulloverDuck" src="" alt="" />
+          </div>
         </div>
         <img class="painting-event__art" id="paintingEventArt" src="" alt="" />
       </div>
@@ -340,7 +352,7 @@
         <img
           class="guardian-event__duck"
           id="guardianEventDuck"
-          src="images/ducks/glowing_vesion/real_duck_glow.png?v=2026.03.20-1"
+          src="images/ducks/glowing_vesion/real_duck_glow.png?v=2026.03.22-3"
           alt=""
         />
         <div class="guardian-event__bubble" id="guardianEventBubble">

@@ -201,6 +201,7 @@ const controls = controlElements.reduce((map, element) => {
 
   return nextMap;
 }, {});
+const rangeInputs = Array.from(form.querySelectorAll('input[type="range"]'));
 
 function versionedUrl(path) {
   const separator = path.includes("?") ? "&" : "?";
@@ -399,6 +400,7 @@ function getModeKey(isNightMode = root.classList.contains("night-mode")) {
 
 function syncGlowLevelForMode(modeKey) {
   glowLevelInput.value = String(MODE_DEFAULT_GLOW_LEVELS[modeKey]);
+  updateRangeVisual(glowLevelInput);
 }
 
 function syncSpawnToggleDefaults() {
@@ -717,6 +719,26 @@ function getMatrixRotationDegrees(matrix) {
   return angleRadians * (180 / Math.PI);
 }
 
+function updateRangeVisual(rangeInput) {
+  if (!(rangeInput instanceof HTMLInputElement) || rangeInput.type !== "range") {
+    return;
+  }
+
+  const min = Number(rangeInput.min);
+  const max = Number(rangeInput.max);
+  const value = Number(rangeInput.value);
+  const resolvedMin = Number.isFinite(min) ? min : 0;
+  const resolvedMax = Number.isFinite(max) && max > resolvedMin ? max : resolvedMin + 1;
+  const resolvedValue = clamp(
+    Number.isFinite(value) ? value : resolvedMin,
+    resolvedMin,
+    resolvedMax
+  );
+  const progress = ((resolvedValue - resolvedMin) / (resolvedMax - resolvedMin)) * 100;
+
+  rangeInput.style.setProperty("--range-progress", `${progress.toFixed(4)}%`);
+}
+
 function syncControl(key) {
   const value = state[key];
   const range = controls[key].range;
@@ -726,6 +748,7 @@ function syncControl(key) {
 
   range.value = String(clamp(value, rangeMin, rangeMax));
   number.value = String(value);
+  updateRangeVisual(range);
 }
 
 function syncAllControls() {
@@ -852,6 +875,7 @@ function resetPaintingEventScene() {
     "is-visible",
     "is-painting",
     "is-ducks-visible",
+    "is-bubbles-visible",
     "is-art-visible",
     "is-blackout-visible"
   );
@@ -1269,12 +1293,14 @@ async function triggerPaintingEvent() {
       return false;
     }
 
+    paintingEvent.classList.add("is-bubbles-visible");
     await waitForMilliseconds(PAINTING_EVENT_LOOK_HOLD_MS);
 
     if (runId !== paintingEventRunId) {
       return false;
     }
 
+    paintingEvent.classList.remove("is-bubbles-visible");
     paintingEventPulloverDuck.src = PAINTING_EVENT_PULLOVER_FRONT_ASSET.url;
     paintingEventTshirtDuck.src = PAINTING_EVENT_TSHIRT_FRONT_ASSET.url;
     await waitForMilliseconds(PAINTING_EVENT_TURN_HOLD_MS);
@@ -1290,7 +1316,12 @@ async function triggerPaintingEvent() {
       return false;
     }
 
-    paintingEvent.classList.remove("is-painting", "is-art-visible", "is-ducks-visible");
+    paintingEvent.classList.remove(
+      "is-painting",
+      "is-art-visible",
+      "is-ducks-visible",
+      "is-bubbles-visible"
+    );
     paintingEventWall.replaceChildren();
     setPaintingRollerVisible(false);
     setPaintingEventContentVisible(false);
@@ -2120,6 +2151,7 @@ function syncRangeValueForTouchScroll(rangeInput, rawValue) {
     }
 
     glowLevelInput.value = String(rawValue);
+    updateRangeVisual(glowLevelInput);
     refreshExistingDucks("asset");
     return;
   }
@@ -2128,6 +2160,7 @@ function syncRangeValueForTouchScroll(rangeInput, rawValue) {
 
   if (!key || !controls[key]) {
     rangeInput.value = String(rawValue);
+    updateRangeVisual(rangeInput);
     return;
   }
 
@@ -2414,7 +2447,8 @@ Object.entries(controls).forEach(([key, control]) => {
   });
 });
 
-Array.from(form.querySelectorAll('input[type="range"]')).forEach((rangeInput) => {
+rangeInputs.forEach((rangeInput) => {
+  updateRangeVisual(rangeInput);
   rangeInput.addEventListener("touchstart", handleRangeTouchStart, { passive: true });
   rangeInput.addEventListener("touchmove", handleRangeTouchMove, { passive: false });
   rangeInput.addEventListener("touchend", clearRangeTouchScroll, { passive: true });
@@ -2482,6 +2516,7 @@ nightModeToggle.addEventListener("change", () => {
 });
 
 glowLevelInput.addEventListener("input", () => {
+  updateRangeVisual(glowLevelInput);
   refreshExistingDucks("asset");
 });
 
