@@ -29,7 +29,7 @@ const MIN_SPEED = 1;
 const MAX_SPEED = 200;
 const DRAG_SCALE = 2;
 const SUPER_EVENT_CHANCE = 1 / 5000;
-const SUPER_EVENT_TYPES = ["vision", "painting", "guardian", "super-sign"];
+const SUPER_EVENT_TYPES = ["vision", "guardian", "super-sign"];
 const GUARDIAN_EVENT_FAMILY_KEY = "real_duck";
 const GUARDIAN_EVENT_BLACK_FADE_MS = 4200;
 const GUARDIAN_EVENT_DUCK_FADE_MS = 3200;
@@ -42,25 +42,13 @@ const VISION_EVENT_SECOND_LOOK_MS = 3000;
 const VISION_EVENT_THIRD_LOOK_MS = 3000;
 const VISION_EVENT_POST_CLEAR_LOOK_MS = 5000;
 const VISION_EVENT_DUCK_EXIT_MS = 6200;
-const PAINTING_EVENT_STROKE_MS = 1900;
-const PAINTING_EVENT_SHIFT_MS = 360;
-const PAINTING_EVENT_DUCK_ENTRY_MS = 4200;
-const PAINTING_EVENT_ART_FADE_MS = 5600;
-const PAINTING_EVENT_LOOK_HOLD_MS = 5000;
-const PAINTING_EVENT_TURN_HOLD_MS = 3000;
-const PAINTING_EVENT_BLACK_FADE_MS = 4200;
-const PAINTING_EVENT_BLACK_HOLD_MS = 500;
-const PAINTING_EVENT_TARGET_STROKE_WIDTH = 150;
-const PAINTING_EVENT_CONTACT_OFFSET_RATIO = 0.12;
-const PAINTING_EVENT_MIN_STROKES = 6;
 const SUPER_SIGN_DUCK_FAMILY_KEY = "sign_duck";
 const SUPER_SIGN_DUCK_SPEED = 5;
 const THEME_COLOR_DAY = "rgb(186, 233, 255)";
 const THEME_COLOR_NIGHT = "rgb(9, 24, 56)";
-const THEME_COLOR_PAINTING = "rgb(154, 32, 37)";
 const THEME_COLOR_BLACKOUT = "#000000";
 const PROTECTED_DUCK_IMAGE_SELECTOR =
-  ".duck, .vision-event__duck, .painting-event__duck, .guardian-event__duck";
+  ".duck, .vision-event__duck, .guardian-event__duck";
 const MODE_DEFAULT_GLOW_LEVELS = {
   day: 0,
   night: 2,
@@ -75,13 +63,8 @@ const MOTION_UPDATE_KEYS = new Set([
   "driftVariance",
 ]);
 const SPECIAL_DUCK_FAMILY_ENTRIES = [
-  ["architect_duck", "architect_duck_glow.png", "architect_duck_halfglow.png", "architect_duck.png"],
   ["bread_duck", "bread_duck_glow.png", "bread_duck_halfglow.png", "bread_duck.png"],
   ["glasses_duck", "glasses_duck_glow.png", "glasses_duck_halfglow.png", "glasses_duck.png"],
-  ["hoodie_duck", "hoodie_duck_glow.png", "hoodie_duck_halfglow.png", "hoodie_duck.png"],
-  ["instantnudel_duck", "instantnudel_duck_glow.png", "instantnudel_duck_halfglow.png", "instantnudel_duck.png"],
-  ["paint_duck", "paint_duck_glow.png", "paint_duck_halfglow.png", "paint_duck.png"],
-  ["pullover_duck", "pullover_duck_glow.png", "pullover_duck_halfglow.png", "pullover_duck.png"],
   ["real_duck", "real_duck_glow.png", "real_duck_halfglow.png", "real_duck.png"],
   ["shaker_duck", "shaker_duck_glow.png", "shaker_duck_halfglow.png", "shaker_duck.png"],
   ["sign_duck", "sign_duck_glow.png", "sign_duck_halfglow.png", "sign_duck.png"],
@@ -101,21 +84,6 @@ const NON_GLOWING_ASSET_SET = createDuckAssetSet(
   "images/ducks/non_glowing_version",
   ["duck", "duck.png"],
   SPECIAL_DUCK_FAMILY_ENTRIES.map(([key, , , nonGlowFilename]) => [key, nonGlowFilename])
-);
-const PAINTING_EVENT_ROLLER_ASSET = createDuckAsset("images/other/paint_roller.png");
-const PAINTING_EVENT_WALL_ASSET = createDuckAsset("images/other/red_wall.jpg");
-const PAINTING_EVENT_ART_ASSET = createDuckAsset("images/other/wall_painting.png");
-const PAINTING_EVENT_PULLOVER_BACK_ASSET = createDuckAsset(
-  "images/ducks/back_version/pullover_duck_back.png"
-);
-const PAINTING_EVENT_TSHIRT_BACK_ASSET = createDuckAsset(
-  "images/ducks/back_version/tshirt_duck_back.png"
-);
-const PAINTING_EVENT_PULLOVER_FRONT_ASSET = createDuckAsset(
-  "images/ducks/non_glowing_version/pullover_duck.png"
-);
-const PAINTING_EVENT_TSHIRT_FRONT_ASSET = createDuckAsset(
-  "images/ducks/non_glowing_version/tshirt_duck.png"
 );
 const VISION_EVENT_NUMBER_DUCK_VARIANTS = [
   ["30_duck", createDuckAsset("images/ducks/non_glowing_version/30_duck.png")],
@@ -138,21 +106,12 @@ const duckContext =
     : null;
 const pageShell = document.querySelector(".page-shell");
 const form = document.getElementById("duckControls");
-const infoTrigger = document.getElementById("infoTrigger");
-const infoPopup = document.getElementById("infoPopup");
 const attentionPopup = document.getElementById("attentionPopup");
 const attentionPopupClose = document.getElementById("attentionPopupClose");
 const guardianEvent = document.getElementById("guardianEvent");
 const guardianEventDuck = document.getElementById("guardianEventDuck");
 const visionEvent = document.getElementById("visionEvent");
 const visionEventDuck = document.getElementById("visionEventDuck");
-const paintingEvent = document.getElementById("paintingEvent");
-const paintingEventWall = document.getElementById("paintingEventWall");
-const paintingEventRoller = document.getElementById("paintingEventRoller");
-const paintingEventScene = paintingEvent.querySelector(".painting-event__scene");
-const paintingEventPulloverDuck = document.getElementById("paintingEventPulloverDuck");
-const paintingEventTshirtDuck = document.getElementById("paintingEventTshirtDuck");
-const paintingEventArt = document.getElementById("paintingEventArt");
 const uiVisibilityToggle = document.getElementById("uiVisibilityToggle");
 const nightModeToggle = document.getElementById("nightModeToggle");
 const themeSwitchLabel = document.getElementById("themeSwitchLabel");
@@ -188,9 +147,6 @@ let guardianEventRestoreUi = false;
 let visionEventActive = false;
 let visionEventRunId = 0;
 let visionEventRestoreUi = false;
-let paintingEventActive = false;
-let paintingEventRunId = 0;
-let paintingEventRestoreUi = false;
 let superSignDuckActive = false;
 let numberedDuckRainMode = false;
 let specialDucksOnlyMode = false;
@@ -323,13 +279,6 @@ function warmDuckAssets() {
     ...getDuckAssetSetAssets(HALF_GLOWING_ASSET_SET),
     ...getDuckAssetSetAssets(NON_GLOWING_ASSET_SET),
     getDuckAssetForFamily(GLOWING_ASSET_SET, GUARDIAN_EVENT_FAMILY_KEY),
-    PAINTING_EVENT_ROLLER_ASSET,
-    PAINTING_EVENT_WALL_ASSET,
-    PAINTING_EVENT_ART_ASSET,
-    PAINTING_EVENT_PULLOVER_BACK_ASSET,
-    PAINTING_EVENT_TSHIRT_BACK_ASSET,
-    PAINTING_EVENT_PULLOVER_FRONT_ASSET,
-    PAINTING_EVENT_TSHIRT_FRONT_ASSET,
     ...VISION_EVENT_NUMBER_DUCK_VARIANTS.map((entry) => entry.asset),
     VISION_EVENT_BACK_ASSET,
     VISION_EVENT_SQUINT_ASSET,
@@ -366,10 +315,6 @@ function warmDuckAssets() {
 function syncSpecialEventAssets() {
   guardianEventDuck.src = getDuckAssetForFamily(GLOWING_ASSET_SET, GUARDIAN_EVENT_FAMILY_KEY).url;
   visionEventDuck.src = VISION_EVENT_BACK_ASSET.url;
-  paintingEventRoller.src = PAINTING_EVENT_ROLLER_ASSET.url;
-  paintingEventArt.src = PAINTING_EVENT_ART_ASSET.url;
-  paintingEventPulloverDuck.src = PAINTING_EVENT_PULLOVER_BACK_ASSET.url;
-  paintingEventTshirtDuck.src = PAINTING_EVENT_TSHIRT_BACK_ASSET.url;
 }
 
 function clamp(value, min, max) {
@@ -597,7 +542,7 @@ function getDuckSizeForMode(logicalSize, asset, familyKey, mode = "normal") {
 }
 
 function hasActiveSuperEvent() {
-  return guardianEventActive || visionEventActive || paintingEventActive || superSignDuckActive;
+  return guardianEventActive || visionEventActive || superSignDuckActive;
 }
 
 function isVisionNumberDuckFamilyKey(familyKey) {
@@ -655,11 +600,6 @@ function pickRandomSuperEventType() {
 function triggerSelectedFullscreenSuperEvent(superEventType) {
   if (superEventType === "vision") {
     void triggerVisionEvent();
-    return true;
-  }
-
-  if (superEventType === "painting") {
-    void triggerPaintingEvent();
     return true;
   }
 
@@ -925,11 +865,6 @@ function setPanelExpanded(isExpanded) {
   requestPanelHeightSync();
 }
 
-function setInfoPopupOpen(isOpen) {
-  infoPopup.hidden = !isOpen;
-  infoTrigger.setAttribute("aria-expanded", String(isOpen));
-}
-
 function setAttentionPopupOpen(isOpen) {
   attentionPopup.hidden = !isOpen;
 }
@@ -958,17 +893,6 @@ function setNumberedDuckRainMode(isActive) {
   numberedDuckRainMode = isActive;
 }
 
-function setPaintingEventVisible(isOpen) {
-  paintingEvent.hidden = !isOpen;
-  paintingEvent.setAttribute("aria-hidden", String(!isOpen));
-}
-
-function setPaintingEventContentVisible(isVisible) {
-  paintingEventWall.hidden = !isVisible;
-  paintingEventRoller.hidden = !isVisible;
-  paintingEventScene.hidden = !isVisible;
-}
-
 function setSuperEventDucksPaused(isPaused) {
   root.classList.toggle("guardian-event-active", isPaused);
   root.classList.toggle("super-event-active", isPaused);
@@ -976,94 +900,6 @@ function setSuperEventDucksPaused(isPaused) {
 
 function setSuperEventUiHidden(isHidden) {
   root.classList.toggle("super-event-ui-hidden", isHidden);
-}
-
-function resetPaintingEventScene() {
-  setPaintingEventContentVisible(true);
-  paintingEvent.classList.remove(
-    "is-visible",
-    "is-painting",
-    "is-ducks-visible",
-    "is-bubbles-visible",
-    "is-art-visible",
-    "is-blackout-visible"
-  );
-  paintingEventWall.replaceChildren();
-  paintingEventRoller.style.removeProperty("--roller-x");
-  paintingEventRoller.style.removeProperty("--roller-y");
-  paintingEventRoller.style.removeProperty("opacity");
-  paintingEventPulloverDuck.src = PAINTING_EVENT_PULLOVER_BACK_ASSET.url;
-  paintingEventTshirtDuck.src = PAINTING_EVENT_TSHIRT_BACK_ASSET.url;
-  paintingEventArt.src = PAINTING_EVENT_ART_ASSET.url;
-}
-
-function setPaintingRollerPosition(x, y) {
-  paintingEventRoller.style.setProperty("--roller-x", `${x.toFixed(2)}px`);
-  paintingEventRoller.style.setProperty("--roller-y", `${y.toFixed(2)}px`);
-}
-
-function getPaintingRollerMetrics() {
-  const rollerRect = paintingEventRoller.getBoundingClientRect();
-  const rollerWidth = rollerRect.width || PAINTING_EVENT_TARGET_STROKE_WIDTH * 1.45;
-  const rollerHeight = rollerRect.height || rollerWidth * 1.42;
-  const paintWidth = Math.max(PAINTING_EVENT_TARGET_STROKE_WIDTH, rollerWidth * 0.68);
-  const contactOffset = rollerHeight * PAINTING_EVENT_CONTACT_OFFSET_RATIO;
-
-  return {
-    rollerWidth,
-    rollerHeight,
-    paintWidth,
-    contactOffset,
-  };
-}
-
-function createPaintingWallStroke(left, width) {
-  const stroke = document.createElement("div");
-
-  stroke.className = "painting-event__stroke";
-  stroke.style.left = `${left}px`;
-  stroke.style.width = `${width}px`;
-  stroke.style.height = "0px";
-  stroke.style.backgroundImage = `url("${PAINTING_EVENT_WALL_ASSET.url}")`;
-  stroke.style.backgroundPosition = `${-left}px 0px`;
-
-  return stroke;
-}
-
-function setPaintingRollerVisible(isVisible) {
-  paintingEventRoller.style.opacity = isVisible ? "1" : "0";
-}
-
-function updatePaintingStrokeProgress(stroke, progress) {
-  stroke.style.height = `${(window.innerHeight * progress).toFixed(2)}px`;
-}
-
-function animatePaintingStroke(stroke, rollerX, contactOffset, runId) {
-  return new Promise((resolve) => {
-    const strokeStart = performance.now();
-
-    const step = (now) => {
-      if (runId !== paintingEventRunId) {
-        resolve(false);
-        return;
-      }
-
-      const progress = clamp((now - strokeStart) / PAINTING_EVENT_STROKE_MS, 0, 1);
-      const contactY = window.innerHeight * progress;
-
-      updatePaintingStrokeProgress(stroke, progress);
-      setPaintingRollerPosition(rollerX, contactY - contactOffset);
-
-      if (progress < 1) {
-        window.requestAnimationFrame(step);
-        return;
-      }
-
-      resolve(true);
-    };
-
-    window.requestAnimationFrame(step);
-  });
 }
 
 function waitForMilliseconds(ms) {
@@ -1096,7 +932,6 @@ async function triggerGuardianEvent() {
   guardianEventRestoreUi = !root.classList.contains("ui-hidden");
   setSuperEventUiHidden(true);
   setUiHidden(true);
-  setInfoPopupOpen(false);
   setAttentionPopupOpen(false);
   guardianEventDuck.src = guardianDuckAsset.url;
   guardianEvent.classList.remove("is-visible", "is-duck-visible", "is-bubble-visible");
@@ -1197,7 +1032,6 @@ async function triggerVisionEvent() {
     visionEventRestoreUi = !root.classList.contains("ui-hidden");
     setSuperEventUiHidden(true);
     setUiHidden(true);
-    setInfoPopupOpen(false);
     setAttentionPopupOpen(false);
     resetVisionEventScene();
     setVisionEventVisible(true);
@@ -1283,188 +1117,6 @@ async function triggerVisionEvent() {
 
       visionEventRestoreUi = false;
       visionEventActive = false;
-      flushDeferredAttentionPopup();
-    }
-  }
-}
-
-async function triggerPaintingEvent() {
-  if (paintingEventActive) {
-    return false;
-  }
-
-  paintingEventActive = true;
-  paintingEventRunId += 1;
-  triggerSuperEventVibration();
-  const runId = paintingEventRunId;
-  let ducksPaused = false;
-  const paintingEventAssets = [
-    PAINTING_EVENT_ROLLER_ASSET,
-    PAINTING_EVENT_WALL_ASSET,
-    PAINTING_EVENT_ART_ASSET,
-    PAINTING_EVENT_PULLOVER_BACK_ASSET,
-    PAINTING_EVENT_TSHIRT_BACK_ASSET,
-    PAINTING_EVENT_PULLOVER_FRONT_ASSET,
-    PAINTING_EVENT_TSHIRT_FRONT_ASSET,
-  ];
-
-  try {
-    await Promise.allSettled(paintingEventAssets.map(loadDuckAssetDimensions));
-
-    if (runId !== paintingEventRunId) {
-      return false;
-    }
-
-    if (activeDuckDrag) {
-      discardActiveDuckDrag();
-    }
-
-    paintingEventRestoreUi = !root.classList.contains("ui-hidden");
-    setSuperEventUiHidden(true);
-    setUiHidden(true);
-    setInfoPopupOpen(false);
-    setAttentionPopupOpen(false);
-    resetPaintingEventScene();
-    setPaintingRollerVisible(false);
-    setPaintingEventVisible(true);
-
-    await waitForMilliseconds(20);
-
-    if (runId !== paintingEventRunId) {
-      return false;
-    }
-
-    paintingEvent.classList.add("is-visible", "is-painting");
-    await waitForMilliseconds(40);
-
-    const { paintWidth, contactOffset } = getPaintingRollerMetrics();
-
-    const strokeCount = Math.max(
-      PAINTING_EVENT_MIN_STROKES,
-      Math.ceil(window.innerWidth / paintWidth)
-    );
-
-    for (let index = 0; index < strokeCount; index += 1) {
-      const left = index * paintWidth;
-      const width = Math.min(paintWidth, window.innerWidth - left);
-
-      if (width <= 0) {
-        break;
-      }
-
-      const rollerX = left + width / 2;
-      setPaintingRollerVisible(false);
-      setPaintingRollerPosition(rollerX, -contactOffset);
-
-      await waitForMilliseconds(index === 0 ? 40 : PAINTING_EVENT_SHIFT_MS);
-
-      if (runId !== paintingEventRunId) {
-        return false;
-      }
-
-      const stroke = createPaintingWallStroke(left, width);
-      paintingEventWall.appendChild(stroke);
-      setPaintingRollerVisible(true);
-      await waitForMilliseconds(420);
-
-      if (runId !== paintingEventRunId) {
-        return false;
-      }
-
-      const finishedStroke = await animatePaintingStroke(
-        stroke,
-        rollerX,
-        contactOffset,
-        runId
-      );
-
-      if (!finishedStroke || runId !== paintingEventRunId) {
-        return false;
-      }
-    }
-
-    paintingEvent.classList.remove("is-painting");
-    setPaintingRollerVisible(false);
-    pauseDuckAnimationClocks();
-    setSuperEventDucksPaused(true);
-    ducksPaused = true;
-    paintingEvent.classList.add("is-ducks-visible");
-    await waitForMilliseconds(PAINTING_EVENT_DUCK_ENTRY_MS);
-
-    if (runId !== paintingEventRunId) {
-      return false;
-    }
-
-    paintingEvent.classList.add("is-art-visible");
-    await waitForMilliseconds(PAINTING_EVENT_ART_FADE_MS);
-
-    if (runId !== paintingEventRunId) {
-      return false;
-    }
-
-    paintingEvent.classList.add("is-bubbles-visible");
-    await waitForMilliseconds(PAINTING_EVENT_LOOK_HOLD_MS);
-
-    if (runId !== paintingEventRunId) {
-      return false;
-    }
-
-    paintingEvent.classList.remove("is-bubbles-visible");
-    paintingEventPulloverDuck.src = PAINTING_EVENT_PULLOVER_FRONT_ASSET.url;
-    paintingEventTshirtDuck.src = PAINTING_EVENT_TSHIRT_FRONT_ASSET.url;
-    await waitForMilliseconds(PAINTING_EVENT_TURN_HOLD_MS);
-
-    if (runId !== paintingEventRunId) {
-      return false;
-    }
-
-    paintingEvent.classList.add("is-blackout-visible");
-    await waitForMilliseconds(PAINTING_EVENT_BLACK_FADE_MS + PAINTING_EVENT_BLACK_HOLD_MS);
-
-    if (runId !== paintingEventRunId) {
-      return false;
-    }
-
-    paintingEvent.classList.remove(
-      "is-painting",
-      "is-art-visible",
-      "is-ducks-visible",
-      "is-bubbles-visible"
-    );
-    paintingEventWall.replaceChildren();
-    setPaintingRollerVisible(false);
-    setPaintingEventContentVisible(false);
-    setSuperEventDucksPaused(false);
-    resumeDuckAnimationClocks();
-    ducksPaused = false;
-    paintingEvent.classList.remove("is-blackout-visible");
-    await waitForMilliseconds(PAINTING_EVENT_BLACK_FADE_MS);
-
-    if (runId !== paintingEventRunId) {
-      return false;
-    }
-
-    paintingEvent.classList.remove("is-visible");
-    await waitForMilliseconds(220);
-
-    return true;
-  } finally {
-    if (runId === paintingEventRunId) {
-      if (ducksPaused) {
-        setSuperEventDucksPaused(false);
-        resumeDuckAnimationClocks();
-      }
-
-      resetPaintingEventScene();
-      setPaintingEventVisible(false);
-      setSuperEventUiHidden(false);
-
-      if (paintingEventRestoreUi) {
-        setUiHidden(false);
-      }
-
-      paintingEventRestoreUi = false;
-      paintingEventActive = false;
       flushDeferredAttentionPopup();
     }
   }
@@ -1695,7 +1347,6 @@ function setUiHidden(isHidden) {
   if (isHidden) {
     root.classList.remove("ui-revealing");
     root.classList.add("ui-hidden");
-    setInfoPopupOpen(false);
     return;
   }
 
@@ -1722,14 +1373,6 @@ function setNightMode(isEnabled) {
 function getActiveThemeColor() {
   if (!guardianEvent.hidden) {
     return THEME_COLOR_BLACKOUT;
-  }
-
-  if (!paintingEvent.hidden) {
-    if (paintingEvent.classList.contains("is-blackout-visible")) {
-      return THEME_COLOR_BLACKOUT;
-    }
-
-    return THEME_COLOR_PAINTING;
   }
 
   return root.classList.contains("night-mode") ? THEME_COLOR_NIGHT : THEME_COLOR_DAY;
@@ -1765,11 +1408,9 @@ function initializeThemeColorSync() {
     attributeFilter: ["class"],
   });
 
-  [guardianEvent, paintingEvent].forEach((element) => {
-    themeColorObserver.observe(element, {
-      attributes: true,
-      attributeFilter: ["class", "hidden"],
-    });
+  themeColorObserver.observe(guardianEvent, {
+    attributes: true,
+    attributeFilter: ["class", "hidden"],
   });
 }
 function createDurationProfile() {
@@ -2916,12 +2557,7 @@ glassCard.addEventListener("touchmove", handleCardTouchMove, { passive: false })
 glassCard.addEventListener("touchend", clearCardTouchScroll, { passive: true });
 glassCard.addEventListener("touchcancel", clearCardTouchScroll, { passive: true });
 
-[
-  guardianEventDuck,
-  visionEventDuck,
-  paintingEventPulloverDuck,
-  paintingEventTshirtDuck,
-].forEach(protectDuckImage);
+[guardianEventDuck, visionEventDuck].forEach(protectDuckImage);
 
 document.addEventListener("contextmenu", (event) => {
   if (!isProtectedDuckImageTarget(event.target)) {
@@ -2978,10 +2614,6 @@ form.addEventListener("reset", (event) => {
 panelToggle.addEventListener("click", () => {
   const isExpanded = panelToggle.getAttribute("aria-expanded") === "true";
   setPanelExpanded(!isExpanded);
-});
-
-infoTrigger.addEventListener("click", () => {
-  setInfoPopupOpen(infoPopup.hidden);
 });
 
 attentionPopupClose.addEventListener("click", () => {
@@ -3121,18 +2753,6 @@ superEventsToggle.addEventListener("click", (event) => {
   event.stopPropagation();
 });
 
-document.addEventListener("pointerdown", (event) => {
-  if (
-    infoPopup.hidden ||
-    infoPopup.contains(event.target) ||
-    infoTrigger.contains(event.target)
-  ) {
-    return;
-  }
-
-  setInfoPopupOpen(false);
-});
-
 glassCard.addEventListener("transitionend", () => {
   glassCard.hidden = root.classList.contains("panel-collapsed");
   requestPanelHeightSync();
@@ -3147,7 +2767,6 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 
-setInfoPopupOpen(false);
 setAttentionPopupOpen(false);
 syncSpecialEventAssets();
 initializeThemeColorSync();
@@ -3155,8 +2774,6 @@ initializeDuckCanvas();
 syncResponsiveControlLimits();
 resetVisionEventScene();
 setVisionEventVisible(false);
-resetPaintingEventScene();
-setPaintingEventVisible(false);
 setGuardianEventVisible(false);
 setUiHidden(false);
 setNightMode(false);
