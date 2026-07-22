@@ -1,14 +1,18 @@
 {
-  "name": "CozySite",
+  "name": "CozySite – Entenregen-Konfigurator",
   "short_name": "CozySite",
-  "start_url": "./",
-  "scope": "./",
+  "description": "Gestalte deinen eigenen Entenregen: Passe Anzahl, Größe, Geschwindigkeit, seitliche Bewegung und Leuchtkraft der fallenden Enten live an.",
+  "lang": "de",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "theme_color": "#bae9ff",
   "background_color": "#bae9ff",
+  "categories": ["entertainment"],
   "icons": [
     {
-      "src": "images/ducks/non_glowing_version/duck.png?v=2026.03.22-6",
+      "src": "/images/ducks/non_glowing_version/duck.png",
       "sizes": "950x950",
       "type": "image/png",
       "purpose": "any"
